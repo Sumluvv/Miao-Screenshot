@@ -66,6 +66,18 @@ git push -u origin main
 
 若远程仓库已有内容且非空，请先 `git pull origin main --rebase` 再推送，或按 GitHub 页面说明操作。
 
+### 不想改「全局」Git 用户名时（仅本次提交）
+
+在 PowerShell 里先设环境变量再 `git commit`（不写 `git config --global`）：
+
+```powershell
+$env:GIT_AUTHOR_NAME="你的名字"
+$env:GIT_AUTHOR_EMAIL="你的邮箱"
+$env:GIT_COMMITTER_NAME=$env:GIT_AUTHOR_NAME
+$env:GIT_COMMITTER_EMAIL=$env:GIT_AUTHOR_EMAIL
+git commit -m "说明本次改动"
+```
+
 ---
 
 ## 五、文件说明
