@@ -10,8 +10,11 @@ pip install pyinstaller pillow
 Write-Host "==> 生成图标"
 python scripts/make_icon.py
 
+Write-Host "==> 移除与 PyInstaller 冲突的 pathlib 回退包（若存在）"
+pip uninstall -y pathlib 2>$null
+
 Write-Host "==> PyInstaller 打包"
-pyinstaller build/win.spec --noconfirm --clean
+python -m PyInstaller build/win.spec --noconfirm --clean
 
 $Out = Join-Path $Root "dist\SplitScreenSnap.exe"
 if (Test-Path $Out) {
