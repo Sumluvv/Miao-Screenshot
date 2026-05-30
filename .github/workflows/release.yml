@@ -1,0 +1,86 @@
+# 推送 v* 标签时自动打包，并把 exe / .app 上传到 GitHub Release
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements-win.txt
+          pip install pyinstaller pillow
+
+      - name: Generate icon
+        run: python scripts/make_icon.py
+
+      - name: PyInstaller
+        run: pyinstaller build/win.spec --noconfirm
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-exe
+          path: dist/SplitScreenSnap.exe
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pyinstaller pillow
+
+      - name: Generate icon
+        run: python scripts/make_icon.py
+
+      - name: PyInstaller
+        run: pyinstaller build/mac.spec --noconfirm
+
+      - name: Zip app
+        run: |
+          cd dist
+          zip -r ../SplitScreenSnap-mac.zip "分屏截屏助手.app"
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-app
+          path: SplitScreenSnap-mac.zip
+
+  publish:
+    needs: [build-windows, build-macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            artifacts/windows-exe/SplitScreenSnap.exe
+            artifacts/macos-app/SplitScreenSnap-mac.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

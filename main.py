@@ -1,18 +1,17 @@
 # -*- coding: utf-8 -*-
 """
-秒截图 (Miao Screenshot) — 主程序
+分屏截屏助手 (Split Screen Snap)
 
-通用截图 → 剪贴板 →（可选）自动粘贴到前台应用并发送。
-支持：整屏 / 指定窗口 / 矩形区域（含「持续使用同一区域」）。
-支持：小浮窗模式（仅保留主按钮，减少遮挡）。
+多屏截图 → 剪贴板 →（可选）自动粘贴到输入框并发送。
+支持：整屏 / 窗口(Windows) / 区域 / 小浮窗模式。
 
-版本: 2.0.0
-平台: Windows 10/11
 仓库: https://github.com/Sumluvv/Miao-Screenshot
 """
 
 import json
+import subprocess
 import sys
+import tempfile
 import threading
 import time
 import traceback
@@ -29,65 +28,189 @@ except Exception:
 import tkinter as tk
 from tkinter import ttk
 
+from app_meta import (
+    APP_DIR,
+    APP_NAME,
+    APP_NAME_EN,
+    CONFIG_FILE,
+    IS_MAC,
+    IS_WINDOWS,
+    REPO_URL,
+    SCREENSHOT_DIR,
+    VERSION,
+    get_app_dir,
+)
+from ui_theme import Theme, apply_app_theme, style_listbox, style_mini_button, style_primary_button
+
 try:
     import mss
     from PIL import Image
-    import win32clipboard
-    import keyboard
     import pyautogui
 except ImportError as e:
     print("[启动失败] 缺少依赖：", e)
     print("请先运行：pip install -r requirements.txt")
     sys.exit(1)
 
+try:
+    import keyboard
+except ImportError:
+    keyboard = None
+
+if IS_WINDOWS:
+    try:
+        import win32clipboard
+    except ImportError as e:
+        print("[启动失败] Windows 需要 pywin32：", e)
+        sys.exit(1)
+else:
+    win32clipboard = None
+
 import ctypes
 from ctypes import wintypes
 
-# ---------- user32 ----------
-_user32 = ctypes.WinDLL("user32", use_last_error=True)
-_user32.GetForegroundWindow.restype = wintypes.HWND
-_user32.GetWindowTextLengthW.argtypes = [wintypes.HWND]
-_user32.GetWindowTextLengthW.restype = ctypes.c_int
-_user32.GetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
-_user32.GetWindowTextW.restype = ctypes.c_int
-_user32.IsIconic.argtypes = [wintypes.HWND]
-_user32.IsIconic.restype = wintypes.BOOL
-_user32.IsWindowVisible.argtypes = [wintypes.HWND]
-_user32.IsWindowVisible.restype = wintypes.BOOL
-_user32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
-_user32.ShowWindow.restype = wintypes.BOOL
-_user32.SetForegroundWindow.argtypes = [wintypes.HWND]
-_user32.SetForegroundWindow.restype = wintypes.BOOL
-_user32.GetWindow.argtypes = [wintypes.HWND, ctypes.c_uint]
-_user32.GetWindow.restype = wintypes.HWND
-
+# ---------- Windows user32 / gdi32（仅 Win）----------
 GW_OWNER = 4
 SW_RESTORE = 9
+PW_CLIENTONLY = 0x00000001
+PW_RENDERFULLCONTENT = 0x00000002
+DIB_RGB_COLORS = 0
+BI_RGB = 0
+GWL_EXSTYLE = -20
+WS_EX_TOOLWINDOW = 0x00000080
+_enum_windows_cb_ref = None
+_monitor_enum_proc_ref = None
+_display_monitors_cache = None
 
+if IS_WINDOWS:
 
-class RECT(ctypes.Structure):
-    _fields_ = [
-        ("left", wintypes.LONG),
-        ("top", wintypes.LONG),
-        ("right", wintypes.LONG),
-        ("bottom", wintypes.LONG),
+    class BITMAPINFOHEADER(ctypes.Structure):
+        _fields_ = [
+            ("biSize", wintypes.DWORD),
+            ("biWidth", wintypes.LONG),
+            ("biHeight", wintypes.LONG),
+            ("biPlanes", wintypes.WORD),
+            ("biBitCount", wintypes.WORD),
+            ("biCompression", wintypes.DWORD),
+            ("biSizeImage", wintypes.DWORD),
+            ("biXPelsPerMeter", wintypes.LONG),
+            ("biYPelsPerMeter", wintypes.LONG),
+            ("biClrUsed", wintypes.DWORD),
+            ("biClrImportant", wintypes.DWORD),
+        ]
+
+    class RECT(ctypes.Structure):
+        _fields_ = [
+            ("left", wintypes.LONG),
+            ("top", wintypes.LONG),
+            ("right", wintypes.LONG),
+            ("bottom", wintypes.LONG),
+        ]
+
+    class MONITORINFOEXW(ctypes.Structure):
+        _fields_ = [
+            ("cbSize", wintypes.DWORD),
+            ("rcMonitor", RECT),
+            ("rcWork", RECT),
+            ("dwFlags", wintypes.DWORD),
+            ("szDevice", wintypes.WCHAR * 32),
+        ]
+
+    _user32 = ctypes.WinDLL("user32", use_last_error=True)
+    _gdi32 = ctypes.WinDLL("gdi32", use_last_error=True)
+    _user32.GetForegroundWindow.restype = wintypes.HWND
+    _user32.GetWindowTextLengthW.argtypes = [wintypes.HWND]
+    _user32.GetWindowTextLengthW.restype = ctypes.c_int
+    _user32.GetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+    _user32.GetWindowTextW.restype = ctypes.c_int
+    _user32.IsIconic.argtypes = [wintypes.HWND]
+    _user32.IsIconic.restype = wintypes.BOOL
+    _user32.IsWindowVisible.argtypes = [wintypes.HWND]
+    _user32.IsWindowVisible.restype = wintypes.BOOL
+    _user32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
+    _user32.ShowWindow.restype = wintypes.BOOL
+    _user32.SetForegroundWindow.argtypes = [wintypes.HWND]
+    _user32.SetForegroundWindow.restype = wintypes.BOOL
+    _user32.GetWindow.argtypes = [wintypes.HWND, ctypes.c_uint]
+    _user32.GetWindow.restype = wintypes.HWND
+    _gdi32.CreateCompatibleDC.argtypes = [wintypes.HDC]
+    _gdi32.CreateCompatibleDC.restype = wintypes.HDC
+    _gdi32.CreateCompatibleBitmap.argtypes = [wintypes.HDC, ctypes.c_int, ctypes.c_int]
+    _gdi32.CreateCompatibleBitmap.restype = wintypes.HBITMAP
+    _gdi32.SelectObject.argtypes = [wintypes.HDC, wintypes.HGDIOBJ]
+    _gdi32.SelectObject.restype = wintypes.HGDIOBJ
+    _gdi32.DeleteObject.argtypes = [wintypes.HGDIOBJ]
+    _gdi32.DeleteObject.restype = wintypes.BOOL
+    _gdi32.DeleteDC.argtypes = [wintypes.HDC]
+    _gdi32.DeleteDC.restype = wintypes.BOOL
+    _gdi32.GetDIBits.argtypes = [
+        wintypes.HDC, wintypes.HBITMAP, wintypes.UINT, wintypes.UINT,
+        ctypes.c_void_p, ctypes.c_void_p, wintypes.UINT,
     ]
+    _gdi32.GetDIBits.restype = ctypes.c_int
+    _user32.GetWindowRect.argtypes = [wintypes.HWND, ctypes.POINTER(RECT)]
+    _user32.GetWindowRect.restype = wintypes.BOOL
+    _user32.GetClientRect.argtypes = [wintypes.HWND, ctypes.POINTER(RECT)]
+    _user32.GetClientRect.restype = wintypes.BOOL
+    _user32.GetWindowDC.argtypes = [wintypes.HWND]
+    _user32.GetWindowDC.restype = wintypes.HDC
+    _user32.ReleaseDC.argtypes = [wintypes.HWND, wintypes.HDC]
+    _user32.ReleaseDC.restype = ctypes.c_int
+    _user32.PrintWindow.argtypes = [wintypes.HWND, wintypes.HDC, wintypes.UINT]
+    _user32.PrintWindow.restype = wintypes.BOOL
+    _user32.GetClassNameW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+    _user32.GetClassNameW.restype = ctypes.c_int
+    _user32.GetWindowLongW.argtypes = [wintypes.HWND, ctypes.c_int]
+    _user32.GetWindowLongW.restype = ctypes.c_long
+    WNDENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    _user32.EnumWindows.argtypes = [WNDENUMPROC, wintypes.LPARAM]
+    _user32.EnumWindows.restype = wintypes.BOOL
+    MONITORINFOF_PRIMARY = 1
+    MONITORENUMPROC = ctypes.WINFUNCTYPE(
+        wintypes.BOOL, wintypes.HMONITOR, wintypes.HDC, ctypes.POINTER(RECT), wintypes.LPARAM,
+    )
+    _user32.EnumDisplayMonitors.argtypes = [
+        wintypes.HDC, ctypes.POINTER(RECT), MONITORENUMPROC, wintypes.LPARAM,
+    ]
+    _user32.EnumDisplayMonitors.restype = wintypes.BOOL
+    _user32.GetMonitorInfoW.argtypes = [wintypes.HMONITOR, ctypes.POINTER(MONITORINFOEXW)]
+    _user32.GetMonitorInfoW.restype = wintypes.BOOL
+else:
+    BITMAPINFOHEADER = RECT = MONITORINFOEXW = None  # type: ignore
+    _user32 = _gdi32 = None
+    WNDENUMPROC = MONITORENUMPROC = None  # type: ignore
+    MONITORINFOF_PRIMARY = 1
 
+# 无标题时的类名 → 显示名
+_CLASS_FRIENDLY = {
+    "Chrome_WidgetWin_1": "Google Chrome",
+    "Chrome_WidgetWin_0": "Google Chrome",
+    "MozillaWindowClass": "Firefox",
+    "ApplicationFrameWindow": "UWP 应用",
+    "CabinetWClass": "资源管理器",
+    "ExploreWClass": "资源管理器",
+    "Notepad": "记事本",
+    "TkTopLevel": "Tk 窗口",
+}
 
-_user32.GetWindowRect.argtypes = [wintypes.HWND, ctypes.POINTER(RECT)]
-_user32.GetWindowRect.restype = wintypes.BOOL
+# 不适合截图的系统壳窗口（标题完全匹配时跳过）
+_SKIP_TITLES = frozenset({
+    "Program Manager",
+    "Windows Input Experience",
+    "Microsoft Text Input Application",
+})
 
-WNDENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
-_user32.EnumWindows.argtypes = [WNDENUMPROC, wintypes.LPARAM]
-_user32.EnumWindows.restype = wintypes.BOOL
+_SKIP_CLASSES = frozenset({
+    "Shell_TrayWnd",
+    "Shell_SecondaryTrayWnd",
+    "Progman",
+    "WorkerW",
+    "DV2ControlHost",
+    "EdgeUiInputTopWndClass",
+})
 
-APP_TITLE = "秒截图"
-APP_TITLE_EN = "Miao Screenshot"
-REPO_URL = "https://github.com/Sumluvv/Miao-Screenshot"
-
-APP_DIR = Path(__file__).parent
-CONFIG_FILE = APP_DIR / "config.json"
-SCREENSHOT_DIR = APP_DIR / "screenshots"
+# 兼容旧代码中的名称
+APP_TITLE = APP_NAME
+APP_TITLE_EN = APP_NAME_EN
 
 DEFAULT_CONFIG = {
     "screen_index": 1,
@@ -112,6 +235,8 @@ DEFAULT_CONFIG = {
     "region_width": 0,
     "region_height": 0,
     "region_continuous": True,
+    "window_x": -1,
+    "window_y": -1,
 }
 
 
@@ -143,9 +268,70 @@ def _mss():
     return mss.MSS() if hasattr(mss, "MSS") else mss.mss()
 
 
+def get_display_monitors(refresh: bool = False) -> list:
+    """
+    枚举显示器，按从左到右、从上到下排序。
+    返回 [{"left","top","width","height","primary","label"}, ...]
+    屏幕 1、2… 与 UI 单选一致；截屏用物理像素矩形（修复多屏/DPI 下截不全）。
+    """
+    global _display_monitors_cache, _monitor_enum_proc_ref
+    if _display_monitors_cache is not None and not refresh:
+        return _display_monitors_cache
+
+    raw = []
+
+    if not IS_WINDOWS:
+        with _mss() as sct:
+            raw = [dict(m) for m in sct.monitors[1:]]
+            for i, m in enumerate(raw):
+                m["primary"] = i == 0
+        raw.sort(key=lambda m: (m["left"], m["top"]))
+        for i, m in enumerate(raw, 1):
+            tag = "主屏" if m.get("primary") else "副屏"
+            m["index"] = i
+            m["label"] = f"屏幕{i}  {m['width']}×{m['height']}  [{tag}]"
+        _display_monitors_cache = raw
+        return _display_monitors_cache
+
+    @MONITORENUMPROC
+    def _enum_proc(hmon, _hdc, _rect, _lparam):
+        info = MONITORINFOEXW()
+        info.cbSize = ctypes.sizeof(MONITORINFOEXW)
+        if _user32.GetMonitorInfoW(hmon, ctypes.byref(info)):
+            r = info.rcMonitor
+            w, h = int(r.right - r.left), int(r.bottom - r.top)
+            if w >= 8 and h >= 8:
+                raw.append({
+                    "left": int(r.left),
+                    "top": int(r.top),
+                    "width": w,
+                    "height": h,
+                    "primary": bool(info.dwFlags & MONITORINFOF_PRIMARY),
+                })
+        return True
+
+    _monitor_enum_proc_ref = _enum_proc
+    if not _user32.EnumDisplayMonitors(None, None, _enum_proc, 0) or not raw:
+        with _mss() as sct:
+            raw = [dict(m) for m in sct.monitors[1:]]
+            for i, m in enumerate(raw):
+                m["primary"] = i == 0
+
+    raw.sort(key=lambda m: (m["left"], m["top"]))
+    for i, m in enumerate(raw, 1):
+        tag = "主屏" if m.get("primary") else "副屏"
+        m["index"] = i
+        m["label"] = f"屏幕{i}  {m['width']}×{m['height']}  [{tag}]"
+    _display_monitors_cache = raw
+    return _display_monitors_cache
+
+
 def list_monitors():
-    with _mss() as sct:
-        return list(sct.monitors[1:])
+    """兼容旧调用：返回显示器区域字典列表"""
+    return [
+        {k: m[k] for k in ("left", "top", "width", "height")}
+        for m in get_display_monitors()
+    ]
 
 
 def virtual_screen_dict():
@@ -155,13 +341,25 @@ def virtual_screen_dict():
 
 
 def capture_screen(screen_index: int = 1) -> Image.Image:
+    monitors = get_display_monitors()
+    if screen_index < 1 or screen_index > len(monitors):
+        raise ValueError(f"屏幕序号 {screen_index} 超范围，当前共 {len(monitors)} 个屏幕")
+    m = monitors[screen_index - 1]
+    area = {
+        "left": int(m["left"]),
+        "top": int(m["top"]),
+        "width": int(m["width"]),
+        "height": int(m["height"]),
+    }
     with _mss() as sct:
-        mons = sct.monitors
-        if screen_index < 1 or screen_index >= len(mons):
-            raise ValueError(f"屏幕序号 {screen_index} 超范围，可用 1~{len(mons)-1}")
-        monitor = mons[screen_index]
-        sct_img = sct.grab(monitor)
-        return Image.frombytes("RGB", sct_img.size, sct_img.bgra, "raw", "BGRX")
+        sct_img = sct.grab(area)
+    img = Image.frombytes("RGB", sct_img.size, sct_img.bgra, "raw", "BGRX")
+    if img.size != (area["width"], area["height"]):
+        print(
+            f"[整屏截图] 屏幕{screen_index} 期望 {area['width']}×{area['height']}，"
+            f"实际 {img.size[0]}×{img.size[1]}"
+        )
+    return img
 
 
 def capture_region(left: int, top: int, width: int, height: int) -> Image.Image:
@@ -173,15 +371,151 @@ def capture_region(left: int, top: int, width: int, height: int) -> Image.Image:
         return Image.frombytes("RGB", sct_img.size, sct_img.bgra, "raw", "BGRX")
 
 
-def capture_window(hwnd: int) -> Image.Image:
+def _get_window_rect_screen(hwnd: int) -> RECT:
+    """窗口在屏幕上的外接矩形（优先 DWM 扩展边框，与肉眼所见一致）"""
     rect = RECT()
+    try:
+        dwm = ctypes.WinDLL("dwmapi")
+        DWMWA_EXTENDED_FRAME_BOUNDS = 9
+        dwm.DwmGetWindowAttribute.argtypes = [
+            wintypes.HWND, wintypes.DWORD, ctypes.POINTER(RECT), wintypes.DWORD,
+        ]
+        dwm.DwmGetWindowAttribute.restype = ctypes.HRESULT
+        if dwm.DwmGetWindowAttribute(
+            wintypes.HWND(hwnd), DWMWA_EXTENDED_FRAME_BOUNDS,
+            ctypes.byref(rect), ctypes.sizeof(rect),
+        ) == 0:
+            if rect.right > rect.left and rect.bottom > rect.top:
+                return rect
+    except Exception:
+        pass
     if not _user32.GetWindowRect(wintypes.HWND(hwnd), ctypes.byref(rect)):
         raise ValueError("无法获取窗口矩形（窗口可能已关闭）")
-    w = rect.right - rect.left
-    h = rect.bottom - rect.top
+    return rect
+
+
+def _image_mostly_black(img: Image.Image, threshold: float = 12.0) -> bool:
+    """判断是否为无效黑屏（PrintWindow 失败时常见）"""
+    if img.width < 2 or img.height < 2:
+        return True
+    sample = img.resize((min(80, img.width), min(80, img.height)))
+    pixels = list(sample.getdata())
+    if not pixels:
+        return True
+    total = sum(p[0] + p[1] + p[2] for p in pixels)
+    return (total / (len(pixels) * 3.0)) < threshold
+
+
+def _capture_window_printwindow(hwnd: int, client_only: bool = False) -> Image.Image:
+    """
+    用 PrintWindow 把窗口内容画到内存位图（可截 Chrome/Edge 等 GPU 合成窗口）。
+    client_only: True 只截客户区（无标题栏）
+    """
+    hwnd = wintypes.HWND(int(hwnd))
+    rect = RECT()
+    if client_only:
+        if not _user32.GetClientRect(hwnd, ctypes.byref(rect)):
+            raise ValueError("无法获取窗口客户区")
+    else:
+        if not _user32.GetWindowRect(hwnd, ctypes.byref(rect)):
+            raise ValueError("无法获取窗口矩形")
+    w, h = rect.right - rect.left, rect.bottom - rect.top
     if w < 2 or h < 2:
-        raise ValueError("窗口太小或已最小化到不可见")
-    return capture_region(rect.left, rect.top, w, h)
+        raise ValueError("窗口太小或已最小化")
+
+    hwnd_dc = _user32.GetWindowDC(hwnd)
+    if not hwnd_dc:
+        raise ValueError("GetWindowDC 失败")
+    mem_dc = None
+    bmp = None
+    old_obj = None
+    try:
+        mem_dc = _gdi32.CreateCompatibleDC(hwnd_dc)
+        if not mem_dc:
+            raise ValueError("CreateCompatibleDC 失败")
+        bmp = _gdi32.CreateCompatibleBitmap(hwnd_dc, w, h)
+        if not bmp:
+            raise ValueError("CreateCompatibleBitmap 失败")
+        old_obj = _gdi32.SelectObject(mem_dc, bmp)
+
+        flags = PW_CLIENTONLY if client_only else 0
+        ok = bool(_user32.PrintWindow(hwnd, mem_dc, flags | PW_RENDERFULLCONTENT))
+        if not ok:
+            ok = bool(_user32.PrintWindow(hwnd, mem_dc, flags))
+        if not ok:
+            raise ValueError("PrintWindow 失败")
+
+        bmi = BITMAPINFOHEADER()
+        bmi.biSize = ctypes.sizeof(BITMAPINFOHEADER)
+        bmi.biWidth = w
+        bmi.biHeight = -h  # 自上而下
+        bmi.biPlanes = 1
+        bmi.biBitCount = 32
+        bmi.biCompression = BI_RGB
+
+        buf_size = w * h * 4
+        buffer = ctypes.create_string_buffer(buf_size)
+        lines = _gdi32.GetDIBits(
+            mem_dc, bmp, 0, h, buffer, ctypes.byref(bmi), DIB_RGB_COLORS,
+        )
+        if lines == 0:
+            raise ValueError("GetDIBits 失败")
+
+        return Image.frombuffer("RGB", (w, h), bytes(buffer), "raw", "BGRX", 0, 1)
+    finally:
+        if mem_dc and old_obj:
+            _gdi32.SelectObject(mem_dc, old_obj)
+        if bmp:
+            _gdi32.DeleteObject(bmp)
+        if mem_dc:
+            _gdi32.DeleteDC(mem_dc)
+        _user32.ReleaseDC(hwnd, hwnd_dc)
+
+
+def capture_window(hwnd: int) -> Image.Image:
+    """
+    截取指定 hwnd 窗口。
+    优先 PrintWindow（避免 GPU 窗口黑屏）；失败或全黑时再尝试屏幕区域截取。
+    """
+    if not IS_WINDOWS:
+        raise RuntimeError("窗口截图仅支持 Windows")
+    hwnd = int(hwnd)
+    if _user32.IsIconic(wintypes.HWND(hwnd)):
+        _user32.ShowWindow(wintypes.HWND(hwnd), SW_RESTORE)
+        time.sleep(0.25)
+
+    # 客户区对多数应用更稳；完整窗口含标题栏
+    attempts = [
+        ("PrintWindow 客户区", lambda: _capture_window_printwindow(hwnd, True)),
+        ("PrintWindow 完整窗口", lambda: _capture_window_printwindow(hwnd, False)),
+    ]
+    last_err = None
+    for name, fn in attempts:
+        try:
+            img = fn()
+            if not _image_mostly_black(img):
+                print(f"[窗口截图] 成功: {name} {img.size}")
+                return img
+            print(f"[窗口截图] {name} 结果偏黑，尝试下一方案…")
+            last_err = ValueError(f"{name} 得到黑屏")
+        except Exception as e:
+            print(f"[窗口截图] {name} 失败: {e}")
+            last_err = e
+
+    rect = _get_window_rect_screen(hwnd)
+    w, h = rect.right - rect.left, rect.bottom - rect.top
+    try:
+        img = capture_region(rect.left, rect.top, w, h)
+        if not _image_mostly_black(img):
+            print("[窗口截图] 回退: 屏幕区域截取")
+            return img
+    except Exception as e:
+        last_err = e
+
+    raise ValueError(
+        "窗口截图失败（得到黑屏）。请确保目标窗口未最小化、未被完全遮挡；"
+        "浏览器可尝试先点一下该窗口再截图。详情: " + str(last_err)
+    )
 
 
 def capture_from_cfg(cfg: dict) -> Image.Image:
@@ -189,6 +523,8 @@ def capture_from_cfg(cfg: dict) -> Image.Image:
     if src == "screen":
         return capture_screen(int(cfg.get("screen_index", 1)))
     if src == "window":
+        if not IS_WINDOWS:
+            raise ValueError("窗口截图目前仅支持 Windows，请改用「整屏」或「区域」")
         hwnd = int(cfg.get("capture_window_hwnd", 0) or 0)
         if hwnd <= 0:
             raise ValueError("请先在「窗口」模式下选择要截取的窗口")
@@ -236,19 +572,35 @@ def save_backup(image: Image.Image) -> Path:
 
 
 def copy_image_to_clipboard(image: Image.Image) -> None:
-    output = BytesIO()
-    image.convert("RGB").save(output, "BMP")
-    data = output.getvalue()[14:]
-    output.close()
-    win32clipboard.OpenClipboard()
-    try:
-        win32clipboard.EmptyClipboard()
-        win32clipboard.SetClipboardData(win32clipboard.CF_DIB, data)
-    finally:
-        win32clipboard.CloseClipboard()
+    if IS_WINDOWS:
+        output = BytesIO()
+        image.convert("RGB").save(output, "BMP")
+        data = output.getvalue()[14:]
+        output.close()
+        win32clipboard.OpenClipboard()
+        try:
+            win32clipboard.EmptyClipboard()
+            win32clipboard.SetClipboardData(win32clipboard.CF_DIB, data)
+        finally:
+            win32clipboard.CloseClipboard()
+        return
+    if IS_MAC:
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+            path = tmp.name
+        image.save(path, "PNG")
+        script = f'set the clipboard to (read (POSIX file "{path}") as «class PNGf»)'
+        subprocess.run(["osascript", "-e", script], check=True, capture_output=True)
+        try:
+            Path(path).unlink(missing_ok=True)
+        except Exception:
+            pass
+        return
+    raise RuntimeError("当前系统不支持剪贴板图片写入")
 
 
 def get_foreground_window_info():
+    if not IS_WINDOWS:
+        return None, ""
     try:
         hwnd = _user32.GetForegroundWindow()
         if not hwnd:
@@ -264,7 +616,7 @@ def get_foreground_window_info():
 
 
 def activate_window(hwnd) -> bool:
-    if not hwnd:
+    if not IS_WINDOWS or not hwnd:
         return False
     try:
         if _user32.IsIconic(hwnd):
@@ -284,30 +636,79 @@ def activate_window(hwnd) -> bool:
         return False
 
 
-def enum_top_level_windows():
-    """返回 [(hwnd, title), ...] 可见、有标题、非子窗口(owner)"""
-    out = []
+def _get_window_class(hwnd) -> str:
+    buf = ctypes.create_unicode_buffer(256)
+    if _user32.GetClassNameW(hwnd, buf, 256) <= 0:
+        return ""
+    return buf.value or ""
 
-    @WNDENUMPROC
-    def _cb(hwnd, _lparam):
-        if not _user32.IsWindowVisible(hwnd):
-            return True
-        if _user32.GetWindow(hwnd, GW_OWNER):
-            return True
-        length = _user32.GetWindowTextLengthW(hwnd)
-        if length <= 0:
-            return True
+
+def _get_window_display_name(hwnd) -> str:
+    length = _user32.GetWindowTextLengthW(hwnd)
+    if length > 0:
         buf = ctypes.create_unicode_buffer(length + 1)
         _user32.GetWindowTextW(hwnd, buf, length + 1)
         title = (buf.value or "").strip()
-        if not title:
+        if title:
+            return title
+    cls = _get_window_class(hwnd)
+    if cls in _CLASS_FRIENDLY:
+        return _CLASS_FRIENDLY[cls]
+    if cls:
+        return f"[{cls}]"
+    return f"窗口 {int(hwnd)}"
+
+
+def _window_rect_size(hwnd) -> tuple:
+    rect = RECT()
+    if not _user32.GetWindowRect(wintypes.HWND(hwnd), ctypes.byref(rect)):
+        return 0, 0
+    return rect.right - rect.left, rect.bottom - rect.top
+
+
+def _should_skip_capture_window(hwnd, display_name: str) -> bool:
+    if not _user32.IsWindowVisible(hwnd):
+        return True
+    if _user32.GetWindow(hwnd, GW_OWNER):
+        return True
+    cls = _get_window_class(hwnd)
+    if cls in _SKIP_CLASSES:
+        return True
+    w, h = _window_rect_size(hwnd)
+    if w < 8 or h < 8:
+        return True
+    if display_name in _SKIP_TITLES:
+        return True
+    for key in (APP_TITLE, APP_TITLE_EN, "网测截图助手"):
+        if key in display_name:
             return True
-        if APP_TITLE in title or APP_TITLE_EN in title:
+    return False
+
+
+def enum_top_level_windows():
+    """返回 [(hwnd, display_name), ...] 当前可见、可截图的顶层窗口"""
+    if not IS_WINDOWS:
+        return []
+    global _enum_windows_cb_ref
+    out = []
+    seen = set()
+
+    @WNDENUMPROC
+    def _cb(hwnd, _lparam):
+        hwnd = int(hwnd)
+        name = _get_window_display_name(hwnd)
+        if _should_skip_capture_window(hwnd, name):
             return True
-        out.append((int(hwnd), title))
+        key = (hwnd, name)
+        if key in seen:
+            return True
+        seen.add(key)
+        out.append((hwnd, name))
         return True
 
-    _user32.EnumWindows(_cb, 0)
+    _enum_windows_cb_ref = _cb
+    if not _user32.EnumWindows(_cb, 0):
+        print("[窗口枚举] EnumWindows 调用失败")
     out.sort(key=lambda x: x[1].lower())
     return out
 
@@ -480,12 +881,20 @@ class FloatingApp:
         self._last_title = ""
         self._window_hwnds: list = []
 
-        self.root.title(f"{APP_TITLE} v2.0")
+        apply_app_theme(self.root)
+        self.root.title(f"{APP_NAME}  v{VERSION}")
         self.root.resizable(False, False)
-        self.root.geometry("+50+50")
+        ico = ASSETS_DIR / ("icon.ico" if IS_WINDOWS else "icon.png")
+        if ico.exists():
+            try:
+                self.root.iconbitmap(str(ico))
+            except Exception:
+                pass
 
-        self.full_frame = ttk.Frame(self.root, padding=8)
-        self.mini_frame = ttk.Frame(self.root, padding=6)
+        self.status_var = tk.StringVar(value="就绪 — 先点输入框所在窗口，再 F8 / 截图")
+
+        self.full_frame = ttk.Frame(self.root, padding=12)
+        self.mini_frame = ttk.Frame(self.root, padding=8)
 
         self._build_full_ui(self.full_frame)
         self._build_mini_ui(self.mini_frame)
@@ -495,6 +904,7 @@ class FloatingApp:
         else:
             self.full_frame.pack(fill="both", expand=True)
 
+        self._load_window_geometry()
         self._apply_window_attrs()
         self._register_hotkey()
         self._schedule_topmost_refresh()
@@ -503,25 +913,24 @@ class FloatingApp:
     def _build_mini_ui(self, frame: ttk.Frame):
         row = ttk.Frame(frame)
         row.pack(fill="x")
-        self.run_btn_mini = tk.Button(
-            row,
-            text="📸",
-            font=("Microsoft YaHei", 16, "bold"),
-            bg="#4CAF50",
-            fg="white",
-            width=4,
-            height=1,
-            command=self.trigger_async,
-        )
+        self.run_btn_mini = tk.Button(row, text="截图", width=6, height=1, command=self.trigger_async)
+        style_mini_button(self.run_btn_mini)
         self.run_btn_mini.pack(side="left", padx=2)
         ttk.Button(row, text="设置", width=6, command=self._expand_from_compact).pack(side="left", padx=2)
-        ttk.Label(row, text="F8", foreground="gray").pack(side="left", padx=4)
-        self.status_mini = ttk.Label(frame, textvariable=self.status_var, foreground="gray", wraplength=200)
-        self.status_mini.pack(fill="x", pady=(4, 0))
+        ttk.Label(row, text="F8", style="Muted.TLabel").pack(side="left", padx=4)
+        self.status_mini = ttk.Label(frame, textvariable=self.status_var, style="Status.TLabel", wraplength=220)
+        self.status_mini.pack(fill="x", pady=(6, 0))
 
     def _build_full_ui(self, frame: ttk.Frame):
-        pad = {"padx": 6, "pady": 2}
+        pad = {"padx": 6, "pady": 3}
         row = 0
+
+        hdr = ttk.Frame(frame)
+        hdr.grid(row=row, column=0, columnspan=2, sticky="ew", pady=(0, 10))
+        ttk.Label(hdr, text=APP_NAME, style="Title.TLabel").pack(anchor="w")
+        plat = "Windows 完整功能" if IS_WINDOWS else "macOS（整屏/区域）"
+        ttk.Label(hdr, text=f"多屏截图 · 一键粘贴到输入框 · {plat}", style="Sub.TLabel").pack(anchor="w")
+        row += 1
 
         self.compact_var = tk.BooleanVar(value=bool(self.cfg.get("compact_mode")))
         ttk.Checkbutton(
@@ -532,108 +941,145 @@ class FloatingApp:
         ).grid(row=row, column=0, columnspan=2, sticky="w", **pad)
         row += 1
 
-        ttk.Separator(frame, orient="horizontal").grid(row=row, column=0, columnspan=2, sticky="ew", pady=4)
+        card_cap = ttk.LabelFrame(frame, text=" 截图 ", padding=8)
+        card_cap.grid(row=row, column=0, columnspan=2, sticky="ew", pady=(0, 6))
         row += 1
+        cap_inner = card_cap
+        self._cap_inner = cap_inner
+        cr = 0
 
-        ttk.Label(frame, text="截取来源:").grid(row=row, column=0, sticky="w", **pad)
+        ttk.Label(cap_inner, text="来源").grid(row=cr, column=0, sticky="w", **pad)
         self.capture_source_var = tk.StringVar(value=self.cfg.get("capture_source", "screen"))
-        src_fr = ttk.Frame(frame)
-        src_fr.grid(row=row, column=1, sticky="w", **pad)
-        for val, lab in (
-            ("screen", "整屏"),
-            ("window", "窗口"),
-            ("region", "区域"),
-        ):
+        src_fr = ttk.Frame(cap_inner)
+        src_fr.grid(row=cr, column=1, sticky="w", **pad)
+        src_items = [("screen", "整屏"), ("region", "区域")]
+        if IS_WINDOWS:
+            src_items.insert(1, ("window", "窗口"))
+        for val, lab in src_items:
             ttk.Radiobutton(
-                src_fr,
-                text=lab,
-                variable=self.capture_source_var,
-                value=val,
-                command=self._on_source_change,
-            ).pack(side="left")
-        row += 1
+                src_fr, text=lab, variable=self.capture_source_var,
+                value=val, command=self._on_source_change,
+            ).pack(side="left", padx=(0, 8))
+        cr += 1
 
-        ttk.Label(frame, text="截取屏幕:").grid(row=row, column=0, sticky="w", **pad)
+        self._screen_label = ttk.Label(cap_inner, text="显示器")
+        self._screen_label.grid(row=cr, column=0, sticky="nw", **pad)
         self.screen_var = tk.IntVar(value=self.cfg["screen_index"])
-        mon_count = max(1, len(list_monitors()))
-        screen_frame = ttk.Frame(frame)
-        screen_frame.grid(row=row, column=1, sticky="w", **pad)
-        for i in range(1, mon_count + 1):
-            ttk.Radiobutton(
-                screen_frame,
-                text=f"屏幕{i}",
-                variable=self.screen_var,
-                value=i,
-                command=self._save_now,
-            ).pack(side="left")
-        self._screen_row = row
-        row += 1
+        self._screen_col = ttk.Frame(cap_inner)
+        self._screen_col.grid(row=cr, column=1, sticky="w", **pad)
+        self._screen_frame = ttk.Frame(self._screen_col)
+        self._screen_frame.pack(anchor="w")
+        ttk.Button(
+            self._screen_col, text="刷新", width=8, command=self._rebuild_screen_radios,
+        ).pack(anchor="w", pady=(2, 0))
+        self._screen_row = cr
+        self._screen_grid = [
+            (self._screen_label, {"row": cr, "column": 0, "sticky": "nw", **pad}),
+            (self._screen_col, {"row": cr, "column": 1, "sticky": "nw", **pad}),
+        ]
+        cr += 1
 
-        ttk.Label(frame, text="目标窗口:").grid(row=row, column=0, sticky="nw", **pad)
-        win_fr = ttk.Frame(frame)
-        win_fr.grid(row=row, column=1, sticky="ew", **pad)
-        self.window_combo = ttk.Combobox(win_fr, width=42, state="readonly")
-        self.window_combo.pack(side="left")
-        ttk.Button(win_fr, text="刷新", width=5, command=self._refresh_window_list).pack(side="left", padx=4)
-        self._window_row = row
-        row += 1
+        self._window_label = ttk.Label(cap_inner, text="截取窗口")
+        self._window_label.grid(row=cr, column=0, sticky="nw", **pad)
+        self.win_fr = ttk.Frame(cap_inner)
+        self.win_fr.grid(row=cr, column=1, sticky="nsew", **pad)
+        btn_row = ttk.Frame(self.win_fr)
+        btn_row.pack(fill="x")
+        ttk.Button(btn_row, text="刷新列表", width=10, command=self._refresh_window_list).pack(side="left")
+        ttk.Button(
+            btn_row, text="拾取当前窗口", width=12, command=self._pick_foreground_capture_window,
+        ).pack(side="left", padx=4)
+        list_wrap = ttk.Frame(self.win_fr)
+        list_wrap.pack(fill="both", expand=True, pady=4)
+        scroll = ttk.Scrollbar(list_wrap, orient="vertical")
+        self.window_listbox = tk.Listbox(
+            list_wrap,
+            height=6,
+            width=42,
+            activestyle="dotbox",
+            exportselection=False,
+            yscrollcommand=scroll.set,
+        )
+        style_listbox(self.window_listbox)
+        scroll.config(command=self.window_listbox.yview)
+        self.window_listbox.pack(side="left", fill="both", expand=True)
+        scroll.pack(side="right", fill="y")
+        self.window_listbox.bind("<<ListboxSelect>>", self._on_window_list_select)
+        self.window_count_var = tk.StringVar(value="共 0 个可截窗口")
+        ttk.Label(self.win_fr, textvariable=self.window_count_var, style="Muted.TLabel").pack(anchor="w")
+        self._window_row = cr
+        self._window_grid = [
+            (self._window_label, {"row": cr, "column": 0, "sticky": "nw", **pad}),
+            (self.win_fr, {"row": cr, "column": 1, "sticky": "nsew", **pad}),
+        ]
+        self._list_refreshing = False
+        cr += 1
 
-        reg_fr = ttk.Frame(frame)
-        reg_fr.grid(row=row, column=0, columnspan=2, sticky="ew", **pad)
+        self.reg_fr = ttk.Frame(cap_inner)
+        self.reg_fr.grid(row=cr, column=0, columnspan=2, sticky="ew", **pad)
         self.region_continuous_var = tk.BooleanVar(value=bool(self.cfg.get("region_continuous", True)))
         ttk.Checkbutton(
-            reg_fr,
+            self.reg_fr,
             text="持续使用同一区域（否则每次截图前都重新框选）",
             variable=self.region_continuous_var,
             command=self._save_now,
         ).pack(anchor="w")
-        btn_line = ttk.Frame(reg_fr)
+        btn_line = ttk.Frame(self.reg_fr)
         btn_line.pack(anchor="w", pady=2)
         ttk.Button(btn_line, text="选取区域", command=self._pick_region_clicked).pack(side="left", padx=2)
         ttk.Button(btn_line, text="清除区域", command=self._clear_region_clicked).pack(side="left", padx=2)
         self.region_info_var = tk.StringVar(value=self._region_info_text())
-        ttk.Label(reg_fr, textvariable=self.region_info_var, foreground="#555", wraplength=360).pack(anchor="w")
-        self._region_row = row
+        ttk.Label(self.reg_fr, textvariable=self.region_info_var, style="Muted.TLabel", wraplength=360).pack(anchor="w")
+        self._region_row = cr
+        self._region_grid = [
+            (self.reg_fr, {"row": cr, "column": 0, "columnspan": 2, "sticky": "ew", **pad}),
+        ]
+        cr += 1
+
+        card_paste = ttk.LabelFrame(frame, text=" 粘贴与发送 ", padding=8)
+        card_paste.grid(row=row, column=0, columnspan=2, sticky="ew", pady=(0, 6))
         row += 1
+        paste = card_paste
 
         self.auto_send_var = tk.BooleanVar(value=self.cfg["auto_send"])
+        pr = 0
         ttk.Checkbutton(
-            frame, text="截图后自动发送（粘贴后回车/点击）",
+            paste, text="截图后自动发送（粘贴后回车/点击）",
             variable=self.auto_send_var,
             command=self._save_now,
-        ).grid(row=row, column=0, columnspan=2, sticky="w", **pad)
-        row += 1
+        ).grid(row=pr, column=0, columnspan=2, sticky="w", **pad)
+        pr += 1
 
         self.save_var = tk.BooleanVar(value=self.cfg["save_backup"])
         ttk.Checkbutton(
-            frame, text="保存本地备份 (screenshots/)",
+            paste, text="保存本地备份",
             variable=self.save_var,
             command=self._save_now,
-        ).grid(row=row, column=0, columnspan=2, sticky="w", **pad)
-        row += 1
+        ).grid(row=pr, column=0, columnspan=2, sticky="w", **pad)
+        pr += 1
 
         self.compress_var = tk.BooleanVar(value=self.cfg["compress"])
         ttk.Checkbutton(
-            frame, text="压缩图片 (上传更快)",
+            paste, text="压缩图片",
             variable=self.compress_var,
             command=self._save_now,
-        ).grid(row=row, column=0, columnspan=2, sticky="w", **pad)
-        row += 1
+        ).grid(row=pr, column=0, columnspan=2, sticky="w", **pad)
+        pr += 1
 
-        ttk.Label(frame, text="发送方式:").grid(row=row, column=0, sticky="w", **pad)
+        ttk.Label(paste, text="发送方式").grid(row=pr, column=0, sticky="w", **pad)
         self.send_mode_var = tk.StringVar(value=self.cfg["send_mode"])
-        mode_frame = ttk.Frame(frame)
-        mode_frame.grid(row=row, column=1, sticky="w", **pad)
+        mode_frame = ttk.Frame(paste)
+        mode_frame.grid(row=pr, column=1, sticky="w", **pad)
         ttk.Radiobutton(mode_frame, text="回车", variable=self.send_mode_var, value="enter", command=self._save_now).pack(
             side="left"
         )
         ttk.Radiobutton(mode_frame, text="点击坐标", variable=self.send_mode_var, value="click", command=self._save_now).pack(
             side="left"
         )
-        row += 1
+        pr += 1
 
-        coord_frame = ttk.Frame(frame)
-        coord_frame.grid(row=row, column=0, columnspan=2, sticky="w", **pad)
+        coord_frame = ttk.Frame(paste)
+        coord_frame.grid(row=pr, column=0, columnspan=2, sticky="w", **pad)
         ttk.Label(coord_frame, text="发送按钮坐标 X:").pack(side="left")
         self.x_var = tk.IntVar(value=self.cfg["click_x"])
         ttk.Entry(coord_frame, textvariable=self.x_var, width=6).pack(side="left")
@@ -641,70 +1087,58 @@ class FloatingApp:
         self.y_var = tk.IntVar(value=self.cfg["click_y"])
         ttk.Entry(coord_frame, textvariable=self.y_var, width=6).pack(side="left")
         ttk.Button(coord_frame, text="保存", command=self._save_now, width=5).pack(side="left", padx=4)
-        row += 1
+        pr += 1
 
-        ttk.Separator(frame, orient="horizontal").grid(row=row, column=0, columnspan=2, sticky="ew", pady=4)
-        row += 1
-
-        ttk.Label(frame, text="切窗延迟(秒)[按钮]:", foreground="#555").grid(row=row, column=0, sticky="w", **pad)
+        ttk.Label(paste, text="切窗延迟(秒)").grid(row=pr, column=0, sticky="w", **pad)
         self.switch_delay_var = tk.DoubleVar(value=self.cfg["switch_delay"])
         ttk.Spinbox(
-            frame, from_=0.0, to=10.0, increment=0.5, width=6,
+            paste, from_=0.0, to=10.0, increment=0.5, width=6,
             textvariable=self.switch_delay_var, command=self._save_now,
-        ).grid(row=row, column=1, sticky="w", **pad)
-        row += 1
+        ).grid(row=pr, column=1, sticky="w", **pad)
+        pr += 1
 
-        ttk.Label(frame, text="上传等待(秒)[发送前]:", foreground="#c0392b").grid(row=row, column=0, sticky="w", **pad)
+        ttk.Label(paste, text="上传等待(秒)").grid(row=pr, column=0, sticky="w", **pad)
         self.upload_delay_var = tk.DoubleVar(value=self.cfg["upload_delay"])
         ttk.Spinbox(
-            frame, from_=0.0, to=15.0, increment=0.5, width=6,
+            paste, from_=0.0, to=15.0, increment=0.5, width=6,
             textvariable=self.upload_delay_var, command=self._save_now,
-        ).grid(row=row, column=1, sticky="w", **pad)
-        row += 1
+        ).grid(row=pr, column=1, sticky="w", **pad)
+        pr += 1
 
-        ttk.Label(frame, text="浮窗透明度:").grid(row=row, column=0, sticky="w", **pad)
+        ttk.Label(paste, text="浮窗透明度").grid(row=pr, column=0, sticky="w", **pad)
         self.opacity_var = tk.DoubleVar(value=self.cfg["opacity"])
         ttk.Scale(
-            frame, from_=0.3, to=1.0, orient="horizontal",
+            paste, from_=0.3, to=1.0, orient="horizontal",
             variable=self.opacity_var, command=self._on_opacity_change,
-        ).grid(row=row, column=1, sticky="ew", **pad)
-        row += 1
-
-        ttk.Separator(frame, orient="horizontal").grid(row=row, column=0, columnspan=2, sticky="ew", pady=4)
-        row += 1
+        ).grid(row=pr, column=1, sticky="ew", **pad)
 
         self.run_btn = tk.Button(
             frame,
-            text="📸  截 图 并 粘 贴  (F8)",
-            font=("Microsoft YaHei", 11, "bold"),
-            bg="#4CAF50",
-            fg="white",
-            activebackground="#45a049",
+            text="截图并粘贴到输入框  (F8)",
             command=self.trigger_async,
-            width=26,
+            width=28,
             height=2,
         )
-        self.run_btn.grid(row=row, column=0, columnspan=2, **pad)
+        style_primary_button(self.run_btn)
+        self.run_btn.grid(row=row, column=0, columnspan=2, pady=(10, 6), **pad)
         row += 1
 
-        self.status_var = tk.StringVar(value="就绪 — 网测/办公通用，建议 F8")
-        self.status_label = ttk.Label(frame, textvariable=self.status_var, foreground="gray", wraplength=380)
+        self.status_label = ttk.Label(frame, textvariable=self.status_var, style="Status.TLabel", wraplength=400)
         self.status_label.grid(row=row, column=0, columnspan=2, sticky="ew", **pad)
         row += 1
 
-        self.target_var = tk.StringVar(value="🎯 目标窗口: (点一下要粘贴的应用输入框)")
-        ttk.Label(frame, textvariable=self.target_var, foreground="#1976d2", wraplength=380).grid(
+        self.target_var = tk.StringVar(value="输入框窗口: (点一下要粘贴的输入框所在窗口)")
+        ttk.Label(frame, textvariable=self.target_var, style="Target.TLabel", wraplength=400).grid(
             row=row, column=0, columnspan=2, sticky="w", **pad
         )
         row += 1
 
-        ttk.Label(
-            frame,
-            text=f"开源: {REPO_URL}",
-            foreground="#888",
-            cursor="hand2",
-        ).grid(row=row, column=0, columnspan=2, sticky="w", **pad)
+        ttk.Label(frame, text=REPO_URL, style="Muted.TLabel", cursor="hand2").grid(
+            row=row, column=0, columnspan=2, sticky="w", **pad
+        )
 
+        self._last_capture_source = self.cfg.get("capture_source", "screen")
+        self._rebuild_screen_radios()
         self._refresh_window_list(select_hwnd=int(self.cfg.get("capture_window_hwnd", 0) or 0))
         self._update_source_rows_visibility()
 
@@ -718,45 +1152,77 @@ class FloatingApp:
         return "当前区域: 未设定"
 
     def _on_source_change(self):
+        prev = getattr(self, "_last_capture_source", None)
+        src = self.capture_source_var.get()
         self._update_source_rows_visibility()
+        if src == "window" and prev != "window":
+            self._refresh_window_list(
+                select_hwnd=int(self.cfg.get("capture_window_hwnd", 0) or 0),
+            )
+        self._last_capture_source = src
         self._save_now()
+
+    def _set_grid_section(self, grid_spec: list, visible: bool) -> None:
+        """显式 grid / grid_remove。不能用 grid_slaves：grid_remove 后 slaves 为空，无法再显示。"""
+        for widget, opts in grid_spec:
+            if visible:
+                widget.grid(**opts)
+            else:
+                widget.grid_remove()
 
     def _update_source_rows_visibility(self):
         src = self.capture_source_var.get()
-        full = self.full_frame
-        for w in full.grid_slaves(row=self._screen_row):
-            if int(w.grid_info().get("column", -1)) >= 0:
-                if src == "screen":
-                    w.grid()
-                else:
-                    w.grid_remove()
-        for w in full.grid_slaves(row=self._window_row):
-            if src == "window":
-                w.grid()
-            else:
-                w.grid_remove()
-        for w in full.grid_slaves(row=self._region_row):
-            if src == "region":
-                w.grid()
-            else:
-                w.grid_remove()
+        self._set_grid_section(self._screen_grid, src == "screen")
+        self._set_grid_section(self._window_grid, src == "window")
+        self._set_grid_section(self._region_grid, src == "region")
+        if src == "window":
+            getattr(self, "_cap_inner", self.full_frame).update_idletasks()
+
+    def _on_window_list_select(self, _event=None):
+        if self._list_refreshing:
+            return
+        if not self.window_listbox.curselection():
+            return
+        self._save_now()
 
     def _refresh_window_list(self, select_hwnd: int = 0):
         pairs = enum_top_level_windows()
         self._window_hwnds = [p[0] for p in pairs]
-        labels = []
-        for hwnd, title in pairs:
-            short = title if len(title) <= 48 else title[:45] + "..."
-            labels.append(f"{short}  [{hwnd}]")
-        self.window_combo["values"] = labels
-        if select_hwnd and select_hwnd in self._window_hwnds:
-            idx = self._window_hwnds.index(select_hwnd)
-            self.window_combo.current(idx)
-        elif labels:
-            self.window_combo.current(0)
-        else:
-            self.window_combo.set("")
+        self._list_refreshing = True
+        try:
+            self.window_listbox.delete(0, tk.END)
+            for hwnd, title in pairs:
+                short = title if len(title) <= 52 else title[:49] + "..."
+                self.window_listbox.insert(tk.END, f"{short}   (hwnd:{hwnd})")
+            n = len(pairs)
+            self.window_count_var.set(
+                f"共 {n} 个可截窗口" if n else "未检测到窗口，请点「刷新列表」或「拾取当前窗口」"
+            )
+            pick_idx = -1
+            if select_hwnd and select_hwnd in self._window_hwnds:
+                pick_idx = self._window_hwnds.index(select_hwnd)
+            elif n > 0:
+                pick_idx = 0
+            if pick_idx >= 0:
+                self.window_listbox.selection_clear(0, tk.END)
+                self.window_listbox.selection_set(pick_idx)
+                self.window_listbox.see(pick_idx)
+                self.window_listbox.activate(pick_idx)
+        finally:
+            self._list_refreshing = False
         self._save_now()
+
+    def _pick_foreground_capture_window(self):
+        """把当前前台窗口加入列表并选中（先切到要截的应用再点）"""
+        hwnd, title = get_foreground_window_info()
+        if not hwnd:
+            self._set_status("无法获取当前前台窗口", "red")
+            return
+        if self._is_self_window(title or ""):
+            self._set_status("请先切换到要截图的应用窗口，再点「拾取当前窗口」", "orange")
+            return
+        self._refresh_window_list(select_hwnd=int(hwnd))
+        self._set_status(f"已选中: {(title or '')[:40]}", "green")
 
     def _pick_region_clicked(self):
         rect = pick_region_overlay(self.root)
@@ -788,20 +1254,61 @@ class FloatingApp:
         if hasattr(self, "region_info_var"):
             self.region_info_var.set(self._region_info_text())
 
+    def _get_window_xy(self) -> tuple:
+        self.root.update_idletasks()
+        return int(self.root.winfo_x()), int(self.root.winfo_y())
+
+    def _place_window_at(self, x: int, y: int) -> None:
+        self.root.geometry(f"+{x}+{y}")
+
+    def _load_window_geometry(self) -> None:
+        x, y = int(self.cfg.get("window_x", -1)), int(self.cfg.get("window_y", -1))
+        if x >= 0 and y >= 0:
+            self._place_window_at(x, y)
+        else:
+            self._place_window_at(50, 50)
+
+    def _save_window_geometry(self) -> None:
+        x, y = self._get_window_xy()
+        self.cfg["window_x"] = x
+        self.cfg["window_y"] = y
+        save_config(self.cfg)
+
+    def _rebuild_screen_radios(self) -> None:
+        """按本机实际显示器数量重建「截取屏幕」选项（含分辨率）"""
+        monitors = get_display_monitors(refresh=True)
+        for w in self._screen_frame.winfo_children():
+            w.destroy()
+        if not monitors:
+            ttk.Label(self._screen_frame, text="未检测到显示器", foreground="red").pack(anchor="w")
+            return
+        cur = int(self.screen_var.get() or 1)
+        if cur < 1 or cur > len(monitors):
+            cur = 1
+            self.screen_var.set(1)
+        for m in monitors:
+            ttk.Radiobutton(
+                self._screen_frame,
+                text=m["label"],
+                variable=self.screen_var,
+                value=m["index"],
+                command=self._save_now,
+            ).pack(anchor="w")
+        self._save_now()
+
     def _toggle_compact(self):
+        x, y = self._get_window_xy()
         on = bool(self.compact_var.get())
         self.cfg["compact_mode"] = on
-        save_config(self.cfg)
         if on:
             self.full_frame.pack_forget()
             self.mini_frame.pack(fill="both", expand=True)
-            try:
-                self.root.geometry("+50+50")
-            except Exception:
-                pass
         else:
             self.mini_frame.pack_forget()
             self.full_frame.pack(fill="both", expand=True)
+        self.root.update_idletasks()
+        self._place_window_at(x, y)
+        self._save_window_geometry()
 
     def _expand_from_compact(self):
         self.compact_var.set(False)
@@ -834,7 +1341,7 @@ class FloatingApp:
                     self._last_title = title
                     short = title if len(title) <= 38 else title[:35] + "..."
                     if hasattr(self, "target_var"):
-                        self.target_var.set(f"🎯 目标窗口: {short}")
+                        self.target_var.set(f"输入框窗口: {short}")
         except Exception as e:
             print(f"[窗口跟踪] {e}")
         self.root.after(300, self._schedule_track_window)
@@ -842,7 +1349,7 @@ class FloatingApp:
     def _is_self_window(self, title: str) -> bool:
         if not title:
             return True
-        for key in (APP_TITLE, APP_TITLE_EN, "网测截图助手"):
+        for key in (APP_TITLE, APP_TITLE_EN, "网测截图助手", "秒截图", "分屏截屏"):
             if key in title:
                 return True
         return False
@@ -874,9 +1381,15 @@ class FloatingApp:
             cfg["click_y"] = int(self.y_var.get())
         except Exception:
             cfg["click_x"], cfg["click_y"] = 0, 0
-        idx = self.window_combo.current()
-        if idx is not None and idx >= 0 and idx < len(self._window_hwnds):
-            cfg["capture_window_hwnd"] = int(self._window_hwnds[idx])
+        sel = self.window_listbox.curselection()
+        if sel and len(self._window_hwnds) > 0:
+            idx = int(sel[0])
+            if 0 <= idx < len(self._window_hwnds):
+                cfg["capture_window_hwnd"] = int(self._window_hwnds[idx])
+            else:
+                cfg["capture_window_hwnd"] = 0
+        elif self._window_hwnds:
+            cfg["capture_window_hwnd"] = int(self._window_hwnds[0])
         else:
             cfg["capture_window_hwnd"] = 0
         if cfg["capture_source"] == "region":
@@ -958,7 +1471,7 @@ class FloatingApp:
                     time.sleep(max(1.0, float(cfg["switch_delay"])))
             else:
                 sw = float(cfg["switch_delay"])
-                report(f"未记录目标，等待 {sw}s …")
+                report(f"未记录输入框窗口，等待 {sw}s …")
                 time.sleep(sw)
 
             auto_paste_and_send(
@@ -986,6 +1499,9 @@ class FloatingApp:
                 b.configure(state="normal")
 
     def _register_hotkey(self):
+        if keyboard is None:
+            print("[快捷键] 未安装 keyboard 库，仅可用按钮触发")
+            return
         hk = self.cfg.get("hotkey", "f8")
         try:
             keyboard.add_hotkey(hk, self._on_hotkey)
@@ -1049,6 +1565,10 @@ def main():
     FloatingApp(root)
 
     def on_close():
+        try:
+            app._save_window_geometry()
+        except Exception:
+            pass
         try:
             keyboard.unhook_all_hotkeys()
         except Exception:

@@ -9,3 +9,7 @@ screenshots/
 .idea/
 .vscode/
 *.log
+dist/
+build/
+*.spec.bak
+assets/icon.iconset/

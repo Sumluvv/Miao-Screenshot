@@ -1,113 +1,145 @@
-# 秒截图 (Miao Screenshot)
+# 分屏截屏助手 (Split Screen Snap)
 
-> Windows 下一键截图 → 剪贴板 →（可选）自动粘贴到当前应用并发送。适用于网测刷题、办公截图发给 AI、多屏工作流等。
+> 双屏 / 多屏下一键截图，自动写入剪贴板，并粘贴到任意应用的**输入框**（AI、Office、浏览器等）。
 
-**开源仓库**：[https://github.com/Sumluvv/Miao-Screenshot](https://github.com/Sumluvv/Miao-Screenshot)
+## 下载即用（普通用户请看这里）
+
+**不要下载绿色的 “Source code”**，那是源码，需要装 Python 才能跑。
+
+请打开 **[Releases 发布页](https://github.com/Sumluvv/Miao-Screenshot/releases/latest)**，下载：
+
+| 你的电脑 | 下载这个文件 | 怎么用 |
+|----------|--------------|--------|
+| **Windows** | `SplitScreenSnap.exe` | 双击运行，无需安装 |
+| **macOS** | `SplitScreenSnap-mac.zip` | 解压后打开「分屏截屏助手.app」 |
+
+首次运行若安全软件拦截，选择「仍要运行」即可。
 
 ---
 
-## 一、功能清单
+![版本](https://img.shields.io/badge/version-3.0.0-blue)
+![平台](https://img.shields.io/badge/Windows-完整功能-green)
+![平台](https://img.shields.io/badge/macOS-整屏%2F区域-orange)
+
+维护者发布新版本说明见 [docs/发布清单.md](docs/发布清单.md)。
+
+---
+
+## 功能一览
 
 | 功能 | 说明 |
 |------|------|
-| 整屏截图 | 多屏下可选屏幕 1 / 2 / … |
-| 指定窗口截图 | 下拉列表选择顶层窗口（点「刷新」更新列表） |
-| 矩形区域截图 | 全虚拟屏半透明覆盖层拖拽框选 |
-| 持续区域 | 勾选后只保存一块区域，之后每次截图沿用该区域 |
-| 非持续区域 | 不勾选则每次截图前都会重新框选 |
-| 小浮窗模式 | 只保留「📸」与「设置」，减少遮挡 |
-| 剪贴板图片 | 支持粘贴到浏览器、Office、IM 等 |
-| 自动粘贴 + 发送 | Ctrl+V 后回车或点击坐标发送（适合 AI 网页） |
-| 全局快捷键 | 默认 F8（焦点在目标输入框时最稳） |
-| 置顶与透明度 | 周期性置顶 + 透明度可调 |
+| 多屏整屏截图 | 自动识别显示器数量与分辨率，按物理坐标完整截取 |
+| 窗口截图 | **Windows**：PrintWindow，支持 Chrome / Edge 等（避免黑屏） |
+| 区域截图 | 拖拽框选；可「持续使用同一区域」 |
+| 剪贴板 | 截图自动复制，目标处 `Ctrl+V` 即可粘贴 |
+| 自动发送 | 可选粘贴后自动回车（适合 AI 网页） |
+| 小浮窗模式 | 仅保留截图按钮，位置与完整面板一致 |
+| 全局快捷键 | 默认 **F8**（焦点在输入框时最顺） |
 
 ---
 
-## 二、安装与运行
+## 快速开始
 
-**环境**：Windows 10 / 11，Python 3.8+
+### 方式 A：Python 运行（开发）
 
 ```powershell
 cd "你的项目目录"
-pip install -r requirements.txt
+pip install -r requirements-win.txt   # Windows
+# pip install -r requirements.txt     # macOS
 python main.py
 ```
 
-自检（可选）：
+### 方式 B：下载发布包（推荐）
+
+在 GitHub [Releases](https://github.com/Sumluvv/Miao-Screenshot/releases) 下载：
+
+| 平台 | 文件 | 说明 |
+|------|------|------|
+| Windows | `SplitScreenSnap.exe` | 单文件，双击运行 |
+| macOS | `分屏截屏助手.app` | 拖入「应用程序」；首次需在「隐私与安全性」允许运行 |
+
+---
+
+## 自己打包
+
+### Windows（生成 exe）
 
 ```powershell
-python test_smoke.py
+.\scripts\build_windows.ps1
+```
+
+输出：`dist\SplitScreenSnap.exe`
+
+### macOS（生成 .app）
+
+```bash
+chmod +x scripts/build_macos.sh
+./scripts/build_macos.sh
+```
+
+输出：`dist/分屏截屏助手.app`
+
+> macOS 版：**整屏 + 区域 + 剪贴板 + F8**；**窗口截图**与 Win32 粘贴增强仅 Windows 提供。
+
+---
+
+## 使用步骤
+
+1. 启动程序，将浮窗放在顺手位置。  
+2. 在要粘贴的应用里**点一下输入框**（底部蓝字会显示「输入框窗口: xxx」）。  
+3. 选择截图来源：**整屏 / 窗口(Win) / 区域**。  
+4. 按 **F8** 或点 **「截图并粘贴到输入框」**。  
+5. 若开启自动发送，等待「上传等待」时间（图大或网慢可调 2~5 秒）。
+
+**小浮窗**：勾选「小浮窗模式」→ 仅显示截图按钮；点「设置」展开完整面板（**位置不变**）。
+
+---
+
+## 项目结构
+
+```
+├── main.py              # 程序入口
+├── app_meta.py          # 名称、版本、路径
+├── ui_theme.py          # 界面主题
+├── assets/              # 图标（打包用）
+├── build/               # PyInstaller spec
+├── scripts/             # 打包与图标脚本
+├── requirements*.txt
+├── LICENSE
+└── readme.md
 ```
 
 ---
 
-## 三、使用说明（简要）
-
-1. **整屏**：截取来源选「整屏」，选屏幕编号，点「截图并粘贴」或按 **F8**。
-2. **窗口**：选「窗口」→「刷新」→ 在下拉里选中目标窗口 → 截图（请尽量让该窗口可见，否则可能截到被遮挡的画面）。
-3. **区域**：选「区域」→ 点「选取区域」或首次截图时按提示框选 → 勾选「持续使用同一区域」则之后每次自动截同一矩形；不勾选则每次截图前重新框选。
-4. **小浮窗**：勾选「小浮窗模式」后只显示小条；点「设置」可回到完整面板。
-5. **发给 AI**：先在 AI 网页输入框里点一下（光标闪烁），再 **F8**；若图大或网速慢，把「上传等待」调到 2～5 秒。
-
----
-
-## 四、推送到 GitHub（备份）
-
-在已登录 `gh` 或已配置 SSH/HTTPS 凭据的前提下，在项目根目录执行：
+## 推送到 GitHub
 
 ```powershell
-git init
 git add .
-git commit -m "秒截图 v2.0: 整屏/窗口/区域、小浮窗、剪贴板与自动发送"
-git branch -M main
-git remote add origin https://github.com/Sumluvv/Miao-Screenshot.git
-git push -u origin main
+git commit -m "release: 分屏截屏助手 v3.0 UI与打包"
+git push origin main
 ```
 
-若远程仓库已有内容且非空，请先 `git pull origin main --rebase` 再推送，或按 GitHub 页面说明操作。
-
-### 不想改「全局」Git 用户名时（仅本次提交）
-
-在 PowerShell 里先设环境变量再 `git commit`（不写 `git config --global`）：
-
-```powershell
-$env:GIT_AUTHOR_NAME="你的名字"
-$env:GIT_AUTHOR_EMAIL="你的邮箱"
-$env:GIT_COMMITTER_NAME=$env:GIT_AUTHOR_NAME
-$env:GIT_COMMITTER_EMAIL=$env:GIT_AUTHOR_EMAIL
-git commit -m "说明本次改动"
-```
+建议在 GitHub 创建 **Release**，上传 `SplitScreenSnap.exe` 与 `分屏截屏助手.app`（或 zip）。
 
 ---
 
-## 五、文件说明
+## 常见问题
 
-| 文件 | 作用 |
-|------|------|
-| `main.py` | 主程序 |
-| `requirements.txt` | 依赖 |
-| `test_smoke.py` | 依赖与截屏自检 |
-| `record_pos.py` | 可选：记录「点击坐标发送」用的屏幕坐标 |
-| `config.json` | 运行后自动生成（已加入 `.gitignore`，勿提交隐私） |
+**Q：窗口截图黑屏？**  
+A：v3 已用 PrintWindow；请更新到最新版，并确保窗口未最小化。
 
----
+**Q：屏幕 2 截不全？**  
+A：v3 使用系统显示器枚举；点「刷新」后重选屏幕 2。
 
-## 六、常见问题
+**Q：F8 没反应？**  
+A：以管理员运行或检查是否被安全软件拦截；仍可用浮窗按钮。
 
-- **`win32gui` DLL 错误**：本版已用 `ctypes` 调用 `user32`，一般不再依赖 `win32gui`。
-- **F8 粘贴了但没发送**：调大「上传等待」秒数。
-- **按钮截图没贴到 AI**：先点一下 AI 输入框，再看「🎯 目标窗口」是否为目标应用标题。
-- **区域模式 F8**：若未勾选「持续」，每次 F8 会先出现框选层，框选后再截图。
+**Q：Mac 没有窗口选项？**  
+A：窗口截图为 Windows 专用；Mac 请用整屏或区域。
 
 ---
 
-## 七、版本记录
+## 许可证
 
-- **v2.0.0** — 项目更名为「秒截图」；小浮窗模式；窗口截图；区域截图（持续/非持续）；仓库 [Miao-Screenshot](https://github.com/Sumluvv/Miao-Screenshot)。
-- v1.x — 原「网测截图助手」能力保留并合并进上述流程。
-
----
-
-## 八、许可
-
-代码按仓库实际声明为准；若未添加 LICENSE，默认保留作者权利，使用请自行评估风险。
+[MIT](LICENSE) © Sumluvv
