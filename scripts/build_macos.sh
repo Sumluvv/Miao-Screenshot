@@ -18,7 +18,7 @@ if command -v iconutil &>/dev/null && [ -f assets/icon.png ]; then
 fi
 
 echo "==> PyInstaller 打包"
-pyinstaller build/mac.spec --noconfirm --clean
+python3 -m PyInstaller packaging/mac.spec --noconfirm --clean
 
 echo "完成: dist/分屏截屏助手.app"
 echo "注意: macOS 版支持整屏/区域截图；窗口截图与部分粘贴增强为 Windows 完整版。"

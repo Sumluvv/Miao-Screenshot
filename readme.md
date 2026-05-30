@@ -103,7 +103,8 @@ chmod +x scripts/build_macos.sh
 ├── app_meta.py          # 名称、版本、路径
 ├── ui_theme.py          # 界面主题
 ├── assets/              # 图标（打包用）
-├── build/               # PyInstaller spec
+├── packaging/           # PyInstaller spec（会提交到 Git）
+├── build/               # PyInstaller 缓存（本地，不提交）
 ├── scripts/             # 打包与图标脚本
 ├── requirements*.txt
 ├── LICENSE

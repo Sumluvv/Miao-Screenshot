@@ -33,7 +33,7 @@ jobs:
         run: python scripts/make_icon.py
 
       - name: PyInstaller
-        run: python -m PyInstaller build/win.spec --noconfirm
+        run: python -m PyInstaller packaging/win.spec --noconfirm
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
@@ -64,7 +64,7 @@ jobs:
         run: python scripts/make_icon.py
 
       - name: PyInstaller
-        run: python -m PyInstaller build/mac.spec --noconfirm
+        run: python -m PyInstaller packaging/mac.spec --noconfirm
 
       - name: Zip app
         run: |

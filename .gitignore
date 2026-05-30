@@ -10,6 +10,7 @@ screenshots/
 .vscode/
 *.log
 dist/
+# PyInstaller 缓存（spec 配置在 packaging/）
 build/
 *.spec.bak
 assets/icon.iconset/
