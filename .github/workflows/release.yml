@@ -12,6 +12,8 @@ permissions:
 jobs:
   build-windows:
     runs-on: windows-latest
+    env:
+      PYTHONUTF8: "1"
     steps:
       - uses: actions/checkout@v4
 
@@ -30,7 +32,9 @@ jobs:
         run: python -m py_compile main.py app_meta.py ui_theme.py
 
       - name: Generate icon
-        run: python scripts/make_icon.py
+        run: |
+          if (Test-Path assets/icon.ico) { Write-Host "Using committed assets/icon.ico" }
+          else { python scripts/make_icon.py }
 
       - name: PyInstaller
         run: python -m PyInstaller packaging/win.spec --noconfirm
