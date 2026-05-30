@@ -17,7 +17,7 @@
 
 ---
 
-![版本](https://img.shields.io/badge/version-3.0.0-blue)
+![版本](https://img.shields.io/badge/version-3.0.4-blue)
 ![平台](https://img.shields.io/badge/Windows-完整功能-green)
 ![平台](https://img.shields.io/badge/macOS-整屏%2F区域-orange)
 
@@ -132,6 +132,9 @@ A：v3 已用 PrintWindow；请更新到最新版，并确保窗口未最小化�
 
 **Q：屏幕 2 截不全？**  
 A：v3 使用系统显示器枚举；点「刷新」后重选屏幕 2。
+
+**Q：安装 exe 后闪退，提示 `ASSETS_DIR is not defined`？**  
+A：请下载 **v3.0.4** 及以上 Release 中的 `SplitScreenSnap.exe`（v3.0.3 及更早打包版有该问题）。
 
 **Q：F8 没反应？**  
 A：以管理员运行或检查是否被安全软件拦截；仍可用浮窗按钮。

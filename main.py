@@ -32,6 +32,7 @@ from app_meta import (
     APP_DIR,
     APP_NAME,
     APP_NAME_EN,
+    ASSETS_DIR,
     CONFIG_FILE,
     IS_MAC,
     IS_WINDOWS,
