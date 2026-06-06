@@ -285,6 +285,7 @@ DEFAULT_CONFIG = {
     "hotkey": "f8",
     "max_width": 1600,
     "opacity": 1.0,
+    "topmost": True,
     "topmost_refresh_ms": 2000,
     # v2
     "compact_mode": False,
@@ -990,6 +991,7 @@ class FloatingApp:
         self._last_hwnd = None
         self._last_title = ""
         self._window_hwnds: list = []
+        self._hotkey_handle = None
 
         apply_app_theme(self.root)
         self.root.title(f"{APP_NAME}  v{VERSION}")
@@ -1002,6 +1004,9 @@ class FloatingApp:
                 pass
 
         self.status_var = tk.StringVar(value="就绪")
+        self.hotkey_text_var = tk.StringVar(value=str(self.cfg.get("hotkey", "f8")).upper())
+        self.topmost_var = tk.BooleanVar(value=bool(self.cfg.get("topmost", True)))
+        self.pin_text_var = tk.StringVar(value="置顶开" if self.topmost_var.get() else "置顶关")
 
         self.full_frame = ttk.Frame(self.root, padding=10)
         self.mini_frame = ttk.Frame(self.root, padding=8)
@@ -1029,7 +1034,7 @@ class FloatingApp:
         self.settings_btn_mini = tk.Button(row, text="设置", width=7, command=self._expand_from_compact)
         style_secondary_button(self.settings_btn_mini)
         self.settings_btn_mini.pack(side="left")
-        ttk.Label(row, text="F8", style="Muted.TLabel").pack(side="left", padx=8)
+        ttk.Label(row, textvariable=self.hotkey_text_var, style="Muted.TLabel").pack(side="left", padx=8)
         self.status_mini = ttk.Label(frame, textvariable=self.status_var, style="Status.TLabel", wraplength=220)
         self.status_mini.pack(fill="x", pady=(6, 0))
 
@@ -1041,6 +1046,42 @@ class FloatingApp:
             row=0, column=0, columnspan=2, sticky="w", padx=4, pady=(0, 5)
         )
         return shell, body
+
+    def _attach_tooltip(self, widget: tk.Widget, text: str) -> None:
+        tip = {"win": None}
+
+        def show(_event=None):
+            if tip["win"] is not None:
+                return
+            x = widget.winfo_rootx() - 270
+            y = widget.winfo_rooty() + widget.winfo_height() + 8
+            win = tk.Toplevel(widget)
+            win.wm_overrideredirect(True)
+            win.wm_geometry(f"+{max(8, x)}+{y}")
+            box = tk.Frame(win, bg=Theme.CARD, highlightbackground=Theme.BORDER, highlightthickness=1, bd=0)
+            box.pack()
+            tk.Label(
+                box,
+                text=text,
+                bg=Theme.CARD,
+                fg=Theme.TEXT,
+                font=Theme.FONT_UI,
+                justify="left",
+                anchor="w",
+                padx=10,
+                pady=8,
+                wraplength=300,
+            ).pack()
+            tip["win"] = win
+
+        def hide(_event=None):
+            win = tip.get("win")
+            if win is not None:
+                win.destroy()
+                tip["win"] = None
+
+        widget.bind("<Enter>", show)
+        widget.bind("<Leave>", hide)
 
     def _build_full_ui(self, frame: ttk.Frame):
         pad = {"padx": 4, "pady": 3}
@@ -1068,16 +1109,57 @@ class FloatingApp:
             font=Theme.FONT_SUB,
             anchor="w",
         ).pack(anchor="w", pady=(2, 0))
-        hotkey = tk.Label(
+        help_btn = tk.Label(
             hdr,
-            text="F8",
+            text="?",
+            bg=Theme.CARD_SOFT,
+            fg=Theme.TEXT,
+            font=Theme.FONT_BTN,
+            padx=8,
+            pady=3,
+            cursor="question_arrow",
+        )
+        help_btn.grid(row=0, column=1, padx=(10, 6), pady=(2, 0))
+        self._attach_tooltip(
+            help_btn,
+            "使用指南\n"
+            "1. 先点一下要接收截图的输入框或应用窗口。\n"
+            "2. 选择整屏、窗口或区域。\n"
+            "3. 点击“截图并粘贴”，或按自定义快捷键。\n\n"
+            "选项说明\n"
+            "自动发送：粘贴后按回车或点击坐标。\n"
+            "保存备份：把截图留在 screenshots 文件夹。\n"
+            "压缩图片：限制图片宽度，适合网页上传。\n"
+            "快捷键：支持 f8、ctrl+shift+s 等 keyboard 库格式。",
+        )
+        self.pin_btn = tk.Label(
+            hdr,
+            textvariable=self.pin_text_var,
+            bg=Theme.CARD_SOFT,
+            fg=Theme.TEXT,
+            font=Theme.FONT_BTN,
+            padx=8,
+            pady=3,
+            cursor="hand2",
+        )
+        self.pin_btn.grid(row=0, column=2, padx=(0, 6), pady=(2, 0))
+        self.pin_btn.bind("<Button-1>", lambda _event: self._toggle_topmost())
+        self._attach_tooltip(
+            self.pin_btn,
+            "置顶开关\n"
+            "默认开启，窗口会一直浮在其他应用上方。\n"
+            "点击后可取消置顶，再点一次恢复。",
+        )
+        self.hotkey_badge = tk.Label(
+            hdr,
+            textvariable=self.hotkey_text_var,
             bg=Theme.PRIMARY,
             fg=Theme.PRIMARY_FG,
             font=Theme.FONT_BTN,
-            padx=10,
+            padx=9,
             pady=3,
         )
-        hotkey.grid(row=0, column=1, padx=(10, 0), pady=(2, 0))
+        self.hotkey_badge.grid(row=0, column=3, pady=(2, 0))
         row += 1
 
         self.run_btn = tk.Button(
@@ -1201,26 +1283,19 @@ class FloatingApp:
         self.auto_send_var = tk.BooleanVar(value=self.cfg["auto_send"])
         pr = 1
 
-        ttk.Checkbutton(
-            paste, text="自动发送",
-            variable=self.auto_send_var,
-            command=self._save_now,
-        ).grid(row=pr, column=0, sticky="w", **pad)
-
+        option_row = ttk.Frame(paste, style="Card.TFrame")
+        option_row.grid(row=pr, column=0, columnspan=2, sticky="w", **pad)
+        ttk.Checkbutton(option_row, text="自动发送", variable=self.auto_send_var, command=self._save_now).pack(
+            side="left", padx=(0, 10)
+        )
         self.save_var = tk.BooleanVar(value=self.cfg["save_backup"])
-        ttk.Checkbutton(
-            paste, text="保存备份",
-            variable=self.save_var,
-            command=self._save_now,
-        ).grid(row=pr, column=1, sticky="w", **pad)
-        pr += 1
-
+        ttk.Checkbutton(option_row, text="保存备份", variable=self.save_var, command=self._save_now).pack(
+            side="left", padx=(0, 10)
+        )
         self.compress_var = tk.BooleanVar(value=self.cfg["compress"])
-        ttk.Checkbutton(
-            paste, text="压缩图片",
-            variable=self.compress_var,
-            command=self._save_now,
-        ).grid(row=pr, column=0, sticky="w", **pad)
+        ttk.Checkbutton(option_row, text="压缩图片", variable=self.compress_var, command=self._save_now).pack(
+            side="left"
+        )
         pr += 1
 
         ttk.Label(paste, text="发送方式", style="Card.TLabel").grid(row=pr, column=0, sticky="w", **pad)
@@ -1268,6 +1343,14 @@ class FloatingApp:
             paste, from_=0.3, to=1.0, orient="horizontal",
             variable=self.opacity_var, command=self._on_opacity_change,
         ).grid(row=pr, column=1, sticky="ew", **pad)
+        pr += 1
+
+        ttk.Label(paste, text="快捷键", style="Card.TLabel").grid(row=pr, column=0, sticky="w", **pad)
+        hotkey_row = ttk.Frame(paste, style="Card.TFrame")
+        hotkey_row.grid(row=pr, column=1, sticky="w", **pad)
+        self.hotkey_var = tk.StringVar(value=str(self.cfg.get("hotkey", "f8")))
+        ttk.Entry(hotkey_row, textvariable=self.hotkey_var, width=14).pack(side="left")
+        ttk.Button(hotkey_row, text="保存", command=self._save_hotkey, width=5).pack(side="left", padx=(4, 0))
 
         ttk.Label(frame, text=REPO_URL, style="Muted.TLabel", cursor="hand2").grid(
             row=row, column=0, columnspan=2, sticky="ew", padx=4, pady=(0, 0)
@@ -1467,7 +1550,7 @@ class FloatingApp:
 
     def _apply_window_attrs(self):
         try:
-            self.root.attributes("-topmost", True)
+            self.root.attributes("-topmost", bool(self.cfg.get("topmost", True)))
         except Exception:
             pass
         try:
@@ -1478,10 +1561,23 @@ class FloatingApp:
     def _schedule_topmost_refresh(self):
         interval = int(self.cfg.get("topmost_refresh_ms", 2000))
         try:
-            self.root.attributes("-topmost", True)
+            if bool(self.cfg.get("topmost", True)):
+                self.root.attributes("-topmost", True)
         except Exception:
             pass
         self.root.after(interval, self._schedule_topmost_refresh)
+
+    def _toggle_topmost(self):
+        on = not bool(self.cfg.get("topmost", True))
+        self.cfg["topmost"] = on
+        self.topmost_var.set(on)
+        self.pin_text_var.set("置顶开" if on else "置顶关")
+        try:
+            self.root.attributes("-topmost", on)
+        except Exception:
+            pass
+        save_config(self.cfg)
+        self._set_status("窗口已置顶" if on else "窗口已取消置顶", "green")
 
     def _schedule_track_window(self):
         try:
@@ -1524,8 +1620,11 @@ class FloatingApp:
         cfg["switch_delay"] = float(self.switch_delay_var.get())
         cfg["upload_delay"] = float(self.upload_delay_var.get())
         cfg["opacity"] = float(self.opacity_var.get())
+        cfg["topmost"] = bool(self.topmost_var.get())
         cfg["send_mode"] = str(self.send_mode_var.get())
         cfg["region_continuous"] = bool(self.region_continuous_var.get())
+        if hasattr(self, "hotkey_var"):
+            cfg["hotkey"] = str(self.hotkey_var.get()).strip() or "f8"
         try:
             cfg["click_x"] = int(self.x_var.get())
             cfg["click_y"] = int(self.y_var.get())
@@ -1552,6 +1651,15 @@ class FloatingApp:
     def _save_now(self):
         self.cfg = self._collect_cfg()
         save_config(self.cfg)
+
+    def _save_hotkey(self):
+        hk = str(self.hotkey_var.get()).strip().lower() or "f8"
+        self.hotkey_var.set(hk)
+        self.cfg["hotkey"] = hk
+        self.hotkey_text_var.set(hk.upper())
+        save_config(self.cfg)
+        self._register_hotkey()
+        self._set_status(f"快捷键已设置为 {hk.upper()}", "green")
 
     def _set_status(self, msg: str, color: str = "gray"):
         self.status_var.set(msg)
@@ -1652,12 +1760,20 @@ class FloatingApp:
         if keyboard is None:
             print("[快捷键] 未安装 keyboard 库，仅可用按钮触发")
             return
-        hk = self.cfg.get("hotkey", "f8")
+        if self._hotkey_handle is not None:
+            try:
+                keyboard.remove_hotkey(self._hotkey_handle)
+            except Exception:
+                pass
+            self._hotkey_handle = None
+        hk = str(self.cfg.get("hotkey", "f8")).strip().lower() or "f8"
+        self.hotkey_text_var.set(hk.upper())
         try:
-            keyboard.add_hotkey(hk, self._on_hotkey)
+            self._hotkey_handle = keyboard.add_hotkey(hk, self._on_hotkey)
             print(f"[快捷键] 已注册: {hk}")
         except Exception as e:
             print(f"[快捷键] 注册失败: {e}")
+            self._set_status_safe(f"快捷键注册失败: {hk}", "red")
 
     def _on_hotkey(self):
         if self._busy:
@@ -1712,7 +1828,7 @@ def main():
         pass
 
     root = tk.Tk()
-    FloatingApp(root)
+    app = FloatingApp(root)
 
     def on_close():
         try:

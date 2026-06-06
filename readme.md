@@ -2,7 +2,7 @@
 
 双屏 / 多屏用户的一键截图小工具：截取整屏、窗口或区域，自动复制到剪贴板，并可粘贴到当前输入框后自动发送。适合频繁向 AI、Office、浏览器或聊天工具发送截图的场景。
 
-![version](https://img.shields.io/badge/version-3.0.11-blue)
+![version](https://img.shields.io/badge/version-3.0.13-blue)
 ![Windows](https://img.shields.io/badge/Windows-安装版%20%2F%20免安装-green)
 ![macOS](https://img.shields.io/badge/macOS-整屏%20%2F%20区域-orange)
 
@@ -40,14 +40,15 @@ Get-FileHash .\SplitScreenSnap.exe -Algorithm SHA256
 | 剪贴板写入 | 截图后自动复制为图片，可直接 `Ctrl+V` |
 | 自动粘贴发送 | 可选择粘贴后回车，或点击指定坐标发送 |
 | 小浮窗模式 | 只保留截图按钮，适合长时间置顶使用 |
-| 全局快捷键 | 默认 `F8`，无需切回工具窗口 |
+| 置顶开关 | 默认置顶，可用顶部“置顶开/关”按钮切换 |
+| 全局快捷键 | 默认 `F8`，可在界面里改成 `ctrl+shift+s` 等组合 |
 
 ## 使用步骤
 
 1. 启动程序，把窗口放在顺手的位置。
 2. 在目标应用里点一下要粘贴截图的输入框。
 3. 选择截图来源：整屏、窗口或区域。
-4. 按 `F8`，或点击“截图并粘贴到输入框”。
+4. 按快捷键，或点击“截图并粘贴”。
 5. 如果开启自动发送，程序会等待上传完成后回车或点击发送。
 
 ## 开发运行
@@ -92,8 +93,8 @@ chmod +x scripts/build_macos.sh
 仓库已包含 `.github/workflows/release.yml`。推送 `v*` 标签会自动构建并创建 Release：
 
 ```powershell
-git tag v3.0.11
-git push origin v3.0.11
+git tag v3.0.13
+git push origin v3.0.13
 ```
 
 Release 附件会包含 Windows 安装版、Windows 免安装版和 macOS zip。发布前可参考 [docs/发布清单.md](docs/发布清单.md)。

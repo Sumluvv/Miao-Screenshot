@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""分屏截屏助手 — compact lacquer UI theme（ttk + Tk）"""
+"""分屏截屏助手 — compact professional UI theme（ttk + Tk）"""
 
 import sys
 import tkinter as tk
@@ -8,20 +8,20 @@ from tkinter import ttk
 
 class Theme:
     """配色与字体"""
-    BG = "#10100f"
-    CARD = "#1a1916"
-    CARD_SOFT = "#22211d"
-    PRIMARY = "#d6ad5c"
-    PRIMARY_HOVER = "#edc76f"
-    PRIMARY_FG = "#100f0d"
-    TEXT = "#f1f0ea"
-    TEXT_MUTED = "#aaa69a"
-    ACCENT = "#77c7bf"
-    BORDER = "#3a3327"
-    SUCCESS = "#77c7bf"
-    WARN = "#d89b52"
-    DANGER = "#d8665b"
-    SEPARATOR = "#2c2a25"
+    BG = "#f4f2ee"
+    CARD = "#fffdf8"
+    CARD_SOFT = "#f0eee8"
+    PRIMARY = "#0f766e"
+    PRIMARY_HOVER = "#115e59"
+    PRIMARY_FG = "#ffffff"
+    TEXT = "#24231f"
+    TEXT_MUTED = "#756f63"
+    ACCENT = "#0f766e"
+    BORDER = "#d8d2c6"
+    SUCCESS = "#0f766e"
+    WARN = "#a15c08"
+    DANGER = "#b42318"
+    SEPARATOR = "#e5dfd3"
 
     FONT_UI = ("Segoe UI", 9) if sys.platform == "win32" else ("SF Pro Text", 11)
     FONT_TITLE = ("Segoe UI Semibold", 13, "bold") if sys.platform == "win32" else ("SF Pro Display", 15, "bold")
@@ -51,7 +51,7 @@ def apply_app_theme(root: tk.Tk) -> ttk.Style:
     style.configure("Card.TLabel", background=Theme.CARD, foreground=Theme.TEXT, font=Theme.FONT_UI)
     style.configure("CardMuted.TLabel", background=Theme.CARD, foreground=Theme.TEXT_MUTED, font=Theme.FONT_SUB)
     style.configure("CardAccent.TLabel", background=Theme.CARD, foreground=Theme.ACCENT, font=Theme.FONT_UI)
-    style.configure("SectionTitle.TLabel", background=Theme.CARD, foreground=Theme.PRIMARY, font=Theme.FONT_MONO)
+    style.configure("SectionTitle.TLabel", background=Theme.CARD, foreground=Theme.TEXT_MUTED, font=Theme.FONT_MONO)
 
     style.configure("TCheckbutton", background=Theme.CARD, font=Theme.FONT_UI)
     style.configure("TRadiobutton", background=Theme.CARD, font=Theme.FONT_UI)
