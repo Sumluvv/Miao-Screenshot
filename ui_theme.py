@@ -14,6 +14,12 @@ class Theme:
     PRIMARY = "#0f766e"
     PRIMARY_HOVER = "#115e59"
     PRIMARY_FG = "#ffffff"
+    BUTTON_BG = "#ffffff"
+    BUTTON_BG_HOVER = "#e7f3f1"
+    BUTTON_FG = "#173f3b"
+    BUTTON_BORDER = "#8bb8b1"
+    TOOLTIP_BG = "#101918"
+    TOOLTIP_TEXT = "#f7faf8"
     TEXT = "#24231f"
     TEXT_MUTED = "#756f63"
     ACCENT = "#0f766e"
@@ -138,16 +144,16 @@ def style_mini_button(btn: tk.Button) -> None:
 
 def style_secondary_button(btn: tk.Button) -> None:
     btn.configure(
-        bg=Theme.CARD_SOFT,
-        fg=Theme.TEXT,
-        activebackground=Theme.SEPARATOR,
-        activeforeground=Theme.TEXT,
+        bg=Theme.BUTTON_BG,
+        fg=Theme.BUTTON_FG,
+        activebackground=Theme.BUTTON_BG_HOVER,
+        activeforeground=Theme.BUTTON_FG,
         relief="flat",
         cursor="hand2",
         bd=0,
         highlightthickness=1,
-        highlightbackground=Theme.BORDER,
-        font=Theme.FONT_UI,
+        highlightbackground=Theme.BUTTON_BORDER,
+        font=Theme.FONT_BTN,
         padx=7,
         pady=2,
     )

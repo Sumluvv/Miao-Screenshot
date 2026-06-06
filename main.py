@@ -49,7 +49,7 @@ except Exception:
     pass
 
 import tkinter as tk
-from tkinter import ttk
+from tkinter import filedialog, ttk
 
 from app_meta import (
     APP_DIR,
@@ -287,6 +287,7 @@ DEFAULT_CONFIG = {
     "opacity": 1.0,
     "topmost": True,
     "topmost_refresh_ms": 2000,
+    "backup_dir": "",
     # v2
     "compact_mode": False,
     "capture_source": "screen",  # screen | window | region
@@ -674,10 +675,18 @@ def compress_image(image: Image.Image, max_width: int = 1600) -> Image.Image:
     return image.resize((max_width, int(h * ratio)), Image.LANCZOS)
 
 
-def save_backup(image: Image.Image) -> Path:
-    SCREENSHOT_DIR.mkdir(exist_ok=True)
+def _backup_dir_from_config(cfg: dict = None) -> Path:
+    raw = str((cfg or {}).get("backup_dir", "")).strip()
+    if raw:
+        return Path(raw).expanduser()
+    return SCREENSHOT_DIR
+
+
+def save_backup(image: Image.Image, cfg: dict = None) -> Path:
+    backup_dir = _backup_dir_from_config(cfg)
+    backup_dir.mkdir(parents=True, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    path = SCREENSHOT_DIR / f"snap_{ts}.png"
+    path = backup_dir / f"snap_{ts}.png"
     image.save(path, "PNG", optimize=True)
     return path
 
@@ -959,7 +968,7 @@ def run_pipeline(cfg: dict, status_cb=None, from_hotkey: bool = False) -> str:
         report(f"压缩到 {img.size[0]}x{img.size[1]}")
 
     if cfg["save_backup"]:
-        path = save_backup(img)
+        path = save_backup(img, cfg)
         report(f"备份: {path.name}")
 
     copy_image_to_clipboard(img)
@@ -1033,7 +1042,27 @@ class FloatingApp:
         self.run_btn_mini.pack(side="left", padx=(0, 6))
         self.settings_btn_mini = tk.Button(row, text="设置", width=7, command=self._expand_from_compact)
         style_secondary_button(self.settings_btn_mini)
-        self.settings_btn_mini.pack(side="left")
+        self.settings_btn_mini.pack(side="left", padx=(0, 6))
+        self.mini_help_btn = tk.Label(
+            row,
+            text="?",
+            bg=Theme.BUTTON_BG,
+            fg=Theme.BUTTON_FG,
+            font=Theme.FONT_BTN,
+            padx=8,
+            pady=3,
+            cursor="question_arrow",
+            highlightthickness=1,
+            highlightbackground=Theme.BUTTON_BORDER,
+        )
+        self.mini_help_btn.pack(side="left")
+        self._attach_tooltip(
+            self.mini_help_btn,
+            "小浮窗模式\n"
+            "只保留截图、设置和快捷键状态，适合把工具长期放在角落里。\n"
+            "点击“截图”会按当前设置完成截屏、复制、粘贴和可选自动发送。\n"
+            "点击“设置”可回到完整面板调整来源、发送方式、快捷键和备份目录。",
+        )
         ttk.Label(row, textvariable=self.hotkey_text_var, style="Muted.TLabel").pack(side="left", padx=8)
         self.status_mini = ttk.Label(frame, textvariable=self.status_var, style="Status.TLabel", wraplength=220)
         self.status_mini.pack(fill="x", pady=(6, 0))
@@ -1053,25 +1082,35 @@ class FloatingApp:
         def show(_event=None):
             if tip["win"] is not None:
                 return
-            x = widget.winfo_rootx() - 270
+            x = widget.winfo_rootx() - 310
             y = widget.winfo_rooty() + widget.winfo_height() + 8
             win = tk.Toplevel(widget)
             win.wm_overrideredirect(True)
-            win.wm_geometry(f"+{max(8, x)}+{y}")
-            box = tk.Frame(win, bg=Theme.CARD, highlightbackground=Theme.BORDER, highlightthickness=1, bd=0)
+            try:
+                win.attributes("-topmost", True)
+            except Exception:
+                pass
+            box = tk.Frame(win, bg=Theme.TOOLTIP_BG, highlightbackground=Theme.BUTTON_BORDER, highlightthickness=1, bd=0)
             box.pack()
             tk.Label(
                 box,
                 text=text,
-                bg=Theme.CARD,
-                fg=Theme.TEXT,
+                bg=Theme.TOOLTIP_BG,
+                fg=Theme.TOOLTIP_TEXT,
                 font=Theme.FONT_UI,
                 justify="left",
                 anchor="w",
-                padx=10,
-                pady=8,
-                wraplength=300,
+                padx=12,
+                pady=10,
+                wraplength=360,
             ).pack()
+            win.update_idletasks()
+            screen_w = win.winfo_screenwidth()
+            screen_h = win.winfo_screenheight()
+            x = min(max(8, x), max(8, screen_w - win.winfo_width() - 8))
+            y = min(max(8, y), max(8, screen_h - win.winfo_height() - 8))
+            win.wm_geometry(f"+{x}+{y}")
+            win.lift()
             tip["win"] = win
 
         def hide(_event=None):
@@ -1112,12 +1151,14 @@ class FloatingApp:
         help_btn = tk.Label(
             hdr,
             text="?",
-            bg=Theme.CARD_SOFT,
-            fg=Theme.TEXT,
+            bg=Theme.BUTTON_BG,
+            fg=Theme.BUTTON_FG,
             font=Theme.FONT_BTN,
             padx=8,
             pady=3,
             cursor="question_arrow",
+            highlightthickness=1,
+            highlightbackground=Theme.BUTTON_BORDER,
         )
         help_btn.grid(row=0, column=1, padx=(10, 6), pady=(2, 0))
         self._attach_tooltip(
@@ -1126,21 +1167,31 @@ class FloatingApp:
             "1. 先点一下要接收截图的输入框或应用窗口。\n"
             "2. 选择整屏、窗口或区域。\n"
             "3. 点击“截图并粘贴”，或按自定义快捷键。\n\n"
-            "选项说明\n"
-            "自动发送：粘贴后按回车或点击坐标。\n"
-            "保存备份：把截图留在 screenshots 文件夹。\n"
-            "压缩图片：限制图片宽度，适合网页上传。\n"
-            "快捷键：支持 f8、ctrl+shift+s 等 keyboard 库格式。",
+            "来源\n"
+            "整屏：适合固定截某一块显示器。\n"
+            "窗口：适合只截应用窗口，减少桌面干扰。\n"
+            "区域：适合聊天框、网页局部、固定看板；可持续使用同一区域，也可每次重新框选。\n\n"
+            "发送方式\n"
+            "回车：粘贴后模拟按 Enter，适合微信、QQ、飞书等输入框。\n"
+            "点击坐标：粘贴后点击指定发送按钮，适合 Enter 不发送或按钮位置固定的网页/后台。\n\n"
+            "特色选项\n"
+            "切窗延迟：点击主按钮后留时间切回目标应用；快捷键触发时通常不用等。\n"
+            "上传等待：图片粘贴后等待应用完成上传，再执行发送动作。\n"
+            "快捷键：默认 F8，可改为 ctrl+shift+s 等组合，适合不切回工具直接截图。\n"
+            "保存备份：把每次截图额外存到自选目录，便于回查和归档。\n"
+            "压缩图片：限制图片宽度，适合网页上传和大图传输。",
         )
         self.pin_btn = tk.Label(
             hdr,
             textvariable=self.pin_text_var,
-            bg=Theme.CARD_SOFT,
-            fg=Theme.TEXT,
+            bg=Theme.BUTTON_BG,
+            fg=Theme.BUTTON_FG,
             font=Theme.FONT_BTN,
             padx=8,
             pady=3,
             cursor="hand2",
+            highlightthickness=1,
+            highlightbackground=Theme.BUTTON_BORDER,
         )
         self.pin_btn.grid(row=0, column=2, padx=(0, 6), pady=(2, 0))
         self.pin_btn.bind("<Button-1>", lambda _event: self._toggle_topmost())
@@ -1278,6 +1329,7 @@ class FloatingApp:
 
         card_paste, paste = self._panel(frame, "automation")
         card_paste.grid(row=row, column=0, columnspan=2, sticky="ew", pady=(0, 8))
+        paste.grid_columnconfigure(1, weight=1)
         row += 1
 
         self.auto_send_var = tk.BooleanVar(value=self.cfg["auto_send"])
@@ -1296,6 +1348,15 @@ class FloatingApp:
         ttk.Checkbutton(option_row, text="压缩图片", variable=self.compress_var, command=self._save_now).pack(
             side="left"
         )
+        pr += 1
+
+        ttk.Label(paste, text="备份目录", style="Card.TLabel").grid(row=pr, column=0, sticky="w", **pad)
+        backup_row = ttk.Frame(paste, style="Card.TFrame")
+        backup_row.grid(row=pr, column=1, sticky="ew", **pad)
+        backup_default = str(_backup_dir_from_config(self.cfg))
+        self.backup_dir_var = tk.StringVar(value=str(self.cfg.get("backup_dir", "")).strip() or backup_default)
+        ttk.Entry(backup_row, textvariable=self.backup_dir_var, width=28).pack(side="left", fill="x", expand=True)
+        ttk.Button(backup_row, text="浏览", command=self._browse_backup_dir, width=5).pack(side="left", padx=(4, 0))
         pr += 1
 
         ttk.Label(paste, text="发送方式", style="Card.TLabel").grid(row=pr, column=0, sticky="w", **pad)
@@ -1360,6 +1421,15 @@ class FloatingApp:
         self._rebuild_screen_radios()
         self._refresh_window_list(select_hwnd=int(self.cfg.get("capture_window_hwnd", 0) or 0))
         self._update_source_rows_visibility()
+
+    def _browse_backup_dir(self):
+        initial = str(_backup_dir_from_config(self.cfg))
+        path = filedialog.askdirectory(parent=self.root, title="选择备份保存目录", initialdir=initial)
+        if not path:
+            return
+        self.backup_dir_var.set(path)
+        self._save_now()
+        self._set_status("备份目录已更新", "green")
 
     def _region_info_text(self) -> str:
         c = self.cfg
@@ -1623,6 +1693,9 @@ class FloatingApp:
         cfg["topmost"] = bool(self.topmost_var.get())
         cfg["send_mode"] = str(self.send_mode_var.get())
         cfg["region_continuous"] = bool(self.region_continuous_var.get())
+        if hasattr(self, "backup_dir_var"):
+            backup_dir = str(self.backup_dir_var.get()).strip()
+            cfg["backup_dir"] = "" if backup_dir == str(SCREENSHOT_DIR) else backup_dir
         if hasattr(self, "hotkey_var"):
             cfg["hotkey"] = str(self.hotkey_var.get()).strip() or "f8"
         try:
@@ -1713,7 +1786,7 @@ class FloatingApp:
                 img = compress_image(img, cfg["max_width"])
                 report(f"压缩 {img.size[0]}×{img.size[1]}")
             if cfg["save_backup"]:
-                path = save_backup(img)
+                path = save_backup(img, cfg)
                 report(f"备份 {path.name}")
             copy_image_to_clipboard(img)
             report("已复制到剪贴板")

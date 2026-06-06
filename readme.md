@@ -2,7 +2,7 @@
 
 双屏 / 多屏用户的一键截图小工具：截取整屏、窗口或区域，自动复制到剪贴板，并可粘贴到当前输入框后自动发送。适合频繁向 AI、Office、浏览器或聊天工具发送截图的场景。
 
-![version](https://img.shields.io/badge/version-3.0.13-blue)
+![version](https://img.shields.io/badge/version-3.0.14-blue)
 ![Windows](https://img.shields.io/badge/Windows-安装版%20%2F%20免安装-green)
 ![macOS](https://img.shields.io/badge/macOS-整屏%20%2F%20区域-orange)
 
@@ -39,8 +39,10 @@ Get-FileHash .\SplitScreenSnap.exe -Algorithm SHA256
 | 区域截图 | 拖拽框选区域，也可持续使用同一区域 |
 | 剪贴板写入 | 截图后自动复制为图片，可直接 `Ctrl+V` |
 | 自动粘贴发送 | 可选择粘贴后回车，或点击指定坐标发送 |
+| 备份目录自选 | 开启保存备份后，可把截图保存到用户指定文件夹 |
 | 小浮窗模式 | 只保留截图按钮，适合长时间置顶使用 |
 | 置顶开关 | 默认置顶，可用顶部“置顶开/关”按钮切换 |
+| 使用说明浮层 | 顶部问号和小浮窗问号会解释来源、延迟、坐标发送、快捷键等功能 |
 | 全局快捷键 | 默认 `F8`，可在界面里改成 `ctrl+shift+s` 等组合 |
 
 ## 使用步骤
