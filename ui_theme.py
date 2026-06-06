@@ -8,21 +8,22 @@ from tkinter import ttk
 
 class Theme:
     """配色与字体"""
-    BG = "#f4f6f9"
+    BG = "#eef2f7"
     CARD = "#ffffff"
-    PRIMARY = "#2563eb"
-    PRIMARY_HOVER = "#1d4ed8"
+    CARD_SOFT = "#f8fafc"
+    PRIMARY = "#155eef"
+    PRIMARY_HOVER = "#0f46c7"
     PRIMARY_FG = "#ffffff"
-    TEXT = "#1e293b"
+    TEXT = "#111827"
     TEXT_MUTED = "#64748b"
-    ACCENT = "#0ea5e9"
-    BORDER = "#e2e8f0"
-    SUCCESS = "#16a34a"
-    WARN = "#d97706"
-    DANGER = "#dc2626"
+    ACCENT = "#0f766e"
+    BORDER = "#d7dee8"
+    SUCCESS = "#15803d"
+    WARN = "#b45309"
+    DANGER = "#b91c1c"
 
     FONT_UI = ("Microsoft YaHei UI", 9) if sys.platform == "win32" else ("PingFang SC", 11)
-    FONT_TITLE = ("Microsoft YaHei UI", 15, "bold") if sys.platform == "win32" else ("PingFang SC", 16, "bold")
+    FONT_TITLE = ("Microsoft YaHei UI", 16, "bold") if sys.platform == "win32" else ("PingFang SC", 17, "bold")
     FONT_SUB = ("Microsoft YaHei UI", 9) if sys.platform == "win32" else ("PingFang SC", 10)
     FONT_BTN = ("Microsoft YaHei UI", 11, "bold") if sys.platform == "win32" else ("PingFang SC", 12, "bold")
 
@@ -60,11 +61,17 @@ def apply_app_theme(root: tk.Tk) -> ttk.Style:
         font=(Theme.FONT_UI[0], 10, "bold"),
     )
     style.configure("Card.TFrame", background=Theme.CARD)
+    style.configure("Soft.TFrame", background=Theme.CARD_SOFT)
+    style.configure("Card.TLabel", background=Theme.CARD, foreground=Theme.TEXT, font=Theme.FONT_UI)
+    style.configure("CardMuted.TLabel", background=Theme.CARD, foreground=Theme.TEXT_MUTED, font=Theme.FONT_SUB)
+    style.configure("CardAccent.TLabel", background=Theme.CARD, foreground=Theme.ACCENT, font=Theme.FONT_UI)
 
     style.configure("TCheckbutton", background=Theme.CARD, font=Theme.FONT_UI)
     style.configure("TRadiobutton", background=Theme.CARD, font=Theme.FONT_UI)
-    style.configure("TButton", padding=(10, 4), font=Theme.FONT_UI)
+    style.configure("TButton", padding=(10, 5), font=Theme.FONT_UI)
     style.map("TButton", foreground=[("active", Theme.PRIMARY)])
+    style.configure("TEntry", padding=(4, 3))
+    style.configure("TSpinbox", padding=(4, 3))
 
     style.configure("TNotebook", background=Theme.BG)
     style.configure("Horizontal.TScale", background=Theme.CARD)
@@ -97,6 +104,21 @@ def style_mini_button(btn: tk.Button) -> None:
         bd=0,
         highlightthickness=0,
         font=("Microsoft YaHei UI", 14, "bold") if sys.platform == "win32" else ("PingFang SC", 15, "bold"),
+    )
+
+
+def style_secondary_button(btn: tk.Button) -> None:
+    btn.configure(
+        bg=Theme.CARD_SOFT,
+        fg=Theme.TEXT,
+        activebackground="#e5eaf2",
+        activeforeground=Theme.TEXT,
+        relief="flat",
+        cursor="hand2",
+        bd=0,
+        highlightthickness=1,
+        highlightbackground=Theme.BORDER,
+        font=Theme.FONT_UI,
     )
 
 

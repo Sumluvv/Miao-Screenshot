@@ -39,11 +39,18 @@ jobs:
       - name: PyInstaller
         run: python -m PyInstaller packaging/win.spec --noconfirm
 
+      - name: Build Windows installer
+        run: |
+          choco install innosetup -y
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" packaging/windows-installer.iss
+
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
         with:
           name: windows-exe
-          path: dist/SplitScreenSnap.exe
+          path: |
+            dist/SplitScreenSnap.exe
+            dist/SplitScreenSnap-Setup.exe
 
   build-macos:
     runs-on: macos-latest
@@ -96,6 +103,7 @@ jobs:
           generate_release_notes: true
           files: |
             artifacts/windows-exe/SplitScreenSnap.exe
+            artifacts/windows-exe/SplitScreenSnap-Setup.exe
             artifacts/macos-app/SplitScreenSnap-mac.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

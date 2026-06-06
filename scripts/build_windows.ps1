@@ -22,3 +22,17 @@ if (Test-Path $Out) {
 } else {
     Write-Error "未找到输出文件"
 }
+
+$Iscc = Get-Command ISCC.exe -ErrorAction SilentlyContinue
+if ($Iscc) {
+    Write-Host "==> 生成 Windows 安装器"
+    & $Iscc.Source (Join-Path $Root "packaging\windows-installer.iss")
+    $Installer = Join-Path $Root "dist\SplitScreenSnap-Setup.exe"
+    if (Test-Path $Installer) {
+        Write-Host "安装器完成: $Installer"
+    } else {
+        Write-Warning "未找到安装器输出文件"
+    }
+} else {
+    Write-Host "未检测到 Inno Setup，已跳过安装器。若要生成 SplitScreenSnap-Setup.exe，请安装 Inno Setup。"
+}

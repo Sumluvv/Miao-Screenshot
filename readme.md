@@ -1,149 +1,102 @@
 # 分屏截屏助手 (Split Screen Snap)
 
-> 双屏 / 多屏下一键截图，自动写入剪贴板，并粘贴到任意应用的**输入框**（AI、Office、浏览器等）。
+双屏 / 多屏用户的一键截图小工具：截取整屏、窗口或区域，自动复制到剪贴板，并可粘贴到当前输入框后自动发送。适合频繁向 AI、Office、浏览器或聊天工具发送截图的场景。
 
-## 下载即用（普通用户请看这里）
+![version](https://img.shields.io/badge/version-3.0.5-blue)
+![Windows](https://img.shields.io/badge/Windows-安装版%20%2F%20免安装-green)
+![macOS](https://img.shields.io/badge/macOS-整屏%20%2F%20区域-orange)
 
-**不要下载绿色的 “Source code”**，那是源码，需要装 Python 才能跑。
+## 下载使用
 
-请打开 **[Releases 发布页](https://github.com/Sumluvv/Miao-Screenshot/releases/latest)**，下载：
+普通用户请打开 [Releases 发布页](https://github.com/Sumluvv/Miao-Screenshot/releases/latest)，不要下载绿色的 `Source code`。
 
-| 你的电脑 | 下载这个文件 | 怎么用 |
-|----------|--------------|--------|
-| **Windows** | `SplitScreenSnap.exe` | 双击运行，无需安装 |
-| **macOS** | `SplitScreenSnap-mac.zip` | 解压后打开「分屏截屏助手.app」 |
+| 系统 | 推荐下载 | 说明 |
+| --- | --- | --- |
+| Windows | `SplitScreenSnap-Setup.exe` | 安装版，带开始菜单和卸载入口 |
+| Windows | `SplitScreenSnap.exe` | 免安装版，下载后双击即可运行 |
+| macOS | `SplitScreenSnap-mac.zip` | 解压后打开 `分屏截屏助手.app` |
 
-首次运行若安全软件拦截，选择「仍要运行」即可。
+Windows 首次运行若出现 SmartScreen 提示，请选择“更多信息”→“仍要运行”。macOS 首次运行若被系统拦截，请到“系统设置 → 隐私与安全性”允许打开。
 
----
-
-![版本](https://img.shields.io/badge/version-3.0.4-blue)
-![平台](https://img.shields.io/badge/Windows-完整功能-green)
-![平台](https://img.shields.io/badge/macOS-整屏%2F区域-orange)
-
-维护者发布新版本说明见 [docs/发布清单.md](docs/发布清单.md)。
-
----
-
-## 功能一览
+## 主要功能
 
 | 功能 | 说明 |
-|------|------|
-| 多屏整屏截图 | 自动识别显示器数量与分辨率，按物理坐标完整截取 |
-| 窗口截图 | **Windows**：PrintWindow，支持 Chrome / Edge 等（避免黑屏） |
-| 区域截图 | 拖拽框选；可「持续使用同一区域」 |
-| 剪贴板 | 截图自动复制，目标处 `Ctrl+V` 即可粘贴 |
-| 自动发送 | 可选粘贴后自动回车（适合 AI 网页） |
-| 小浮窗模式 | 仅保留截图按钮，位置与完整面板一致 |
-| 全局快捷键 | 默认 **F8**（焦点在输入框时最顺） |
+| --- | --- |
+| 多屏整屏截图 | 自动识别显示器数量、位置和分辨率 |
+| 窗口截图 | Windows 上使用窗口句柄截取，适合浏览器、Office 等应用 |
+| 区域截图 | 拖拽框选区域，也可持续使用同一区域 |
+| 剪贴板写入 | 截图后自动复制为图片，可直接 `Ctrl+V` |
+| 自动粘贴发送 | 可选择粘贴后回车，或点击指定坐标发送 |
+| 小浮窗模式 | 只保留截图按钮，适合长时间置顶使用 |
+| 全局快捷键 | 默认 `F8`，无需切回工具窗口 |
 
----
+## 使用步骤
 
-## 快速开始
+1. 启动程序，把窗口放在顺手的位置。
+2. 在目标应用里点一下要粘贴截图的输入框。
+3. 选择截图来源：整屏、窗口或区域。
+4. 按 `F8`，或点击“截图并粘贴到输入框”。
+5. 如果开启自动发送，程序会等待上传完成后回车或点击发送。
 
-### 方式 A：Python 运行（开发）
+## 开发运行
 
 ```powershell
-cd "你的项目目录"
-pip install -r requirements-win.txt   # Windows
-# pip install -r requirements.txt     # macOS
+cd "C:\Users\1\webtest script"
+pip install -r requirements-win.txt
 python main.py
 ```
 
-### 方式 B：下载发布包（推荐）
+macOS 开发环境可使用：
 
-在 GitHub [Releases](https://github.com/Sumluvv/Miao-Screenshot/releases) 下载：
+```bash
+pip install -r requirements.txt
+python main.py
+```
 
-| 平台 | 文件 | 说明 |
-|------|------|------|
-| Windows | `SplitScreenSnap.exe` | 单文件，双击运行 |
-| macOS | `分屏截屏助手.app` | 拖入「应用程序」；首次需在「隐私与安全性」允许运行 |
+## 本地打包
 
----
-
-## 自己打包
-
-### Windows（生成 exe）
+Windows：
 
 ```powershell
 .\scripts\build_windows.ps1
 ```
 
-输出：`dist\SplitScreenSnap.exe`
+输出文件：
 
-### macOS（生成 .app）
+- `dist\SplitScreenSnap.exe`：免安装版
+- `dist\SplitScreenSnap-Setup.exe`：安装版，需要本机安装 Inno Setup；未安装时会自动跳过
+
+macOS：
 
 ```bash
 chmod +x scripts/build_macos.sh
 ./scripts/build_macos.sh
 ```
 
-输出：`dist/分屏截屏助手.app`
+输出文件：`dist/分屏截屏助手.app`
 
-> macOS 版：**整屏 + 区域 + 剪贴板 + F8**；**窗口截图**与 Win32 粘贴增强仅 Windows 提供。
+## GitHub 自动发布
 
----
-
-## 使用步骤
-
-1. 启动程序，将浮窗放在顺手位置。  
-2. 在要粘贴的应用里**点一下输入框**（底部蓝字会显示「输入框窗口: xxx」）。  
-3. 选择截图来源：**整屏 / 窗口(Win) / 区域**。  
-4. 按 **F8** 或点 **「截图并粘贴到输入框」**。  
-5. 若开启自动发送，等待「上传等待」时间（图大或网慢可调 2~5 秒）。
-
-**小浮窗**：勾选「小浮窗模式」→ 仅显示截图按钮；点「设置」展开完整面板（**位置不变**）。
-
----
-
-## 项目结构
-
-```
-├── main.py              # 程序入口
-├── app_meta.py          # 名称、版本、路径
-├── ui_theme.py          # 界面主题
-├── assets/              # 图标（打包用）
-├── packaging/           # PyInstaller spec（会提交到 Git）
-├── build/               # PyInstaller 缓存（本地，不提交）
-├── scripts/             # 打包与图标脚本
-├── requirements*.txt
-├── LICENSE
-└── readme.md
-```
-
----
-
-## 推送到 GitHub
+仓库已包含 `.github/workflows/release.yml`。推送 `v*` 标签会自动构建并创建 Release：
 
 ```powershell
-git add .
-git commit -m "release: 分屏截屏助手 v3.0 UI与打包"
-git push origin main
+git tag v3.0.5
+git push origin v3.0.5
 ```
 
-建议在 GitHub 创建 **Release**，上传 `SplitScreenSnap.exe` 与 `分屏截屏助手.app`（或 zip）。
-
----
+Release 附件会包含 Windows 安装版、Windows 免安装版和 macOS zip。发布前可参考 [docs/发布清单.md](docs/发布清单.md)。
 
 ## 常见问题
 
-**Q：窗口截图黑屏？**  
-A：v3 已用 PrintWindow；请更新到最新版，并确保窗口未最小化。
+**窗口截图黑屏怎么办？**  
+请确认目标窗口没有最小化。部分硬件加速或受保护窗口可能无法被系统 API 完整截取，可改用整屏或区域截图。
 
-**Q：屏幕 2 截不全？**  
-A：v3 使用系统显示器枚举；点「刷新」后重选屏幕 2。
+**F8 没反应怎么办？**  
+可能被安全软件或系统权限拦截。可改用窗口里的截图按钮，或尝试以管理员身份运行。
 
-**Q：安装 exe 后闪退，提示 `ASSETS_DIR is not defined`？**  
-A：请下载 **v3.0.4** 及以上 Release 中的 `SplitScreenSnap.exe`（v3.0.3 及更早打包版有该问题）。
+**为什么我下载源码后打不开？**  
+源码需要 Python 环境。普通用户请在 Releases 页面下载 `SplitScreenSnap-Setup.exe` 或 `SplitScreenSnap.exe`。
 
-**Q：F8 没反应？**  
-A：以管理员运行或检查是否被安全软件拦截；仍可用浮窗按钮。
-
-**Q：Mac 没有窗口选项？**  
-A：窗口截图为 Windows 专用；Mac 请用整屏或区域。
-
----
-
-## 许可证
+## 许可
 
 [MIT](LICENSE) © Sumluvv
