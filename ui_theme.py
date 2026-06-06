@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""分屏截屏助手 — Apple-inspired light UI theme（ttk + Tk）"""
+"""分屏截屏助手 — compact lacquer UI theme（ttk + Tk）"""
 
 import sys
 import tkinter as tk
@@ -8,37 +8,35 @@ from tkinter import ttk
 
 class Theme:
     """配色与字体"""
-    BG = "#f5f5f7"
-    CARD = "#ffffff"
-    CARD_SOFT = "#fbfbfd"
-    PRIMARY = "#0071e3"
-    PRIMARY_HOVER = "#0077ed"
-    PRIMARY_FG = "#ffffff"
-    TEXT = "#1d1d1f"
-    TEXT_MUTED = "#6e6e73"
-    ACCENT = "#34c759"
-    BORDER = "#d2d2d7"
-    SUCCESS = "#248a3d"
-    WARN = "#bf5b00"
-    DANGER = "#d70015"
-    SEPARATOR = "#e5e5ea"
+    BG = "#10100f"
+    CARD = "#1a1916"
+    CARD_SOFT = "#22211d"
+    PRIMARY = "#d6ad5c"
+    PRIMARY_HOVER = "#edc76f"
+    PRIMARY_FG = "#100f0d"
+    TEXT = "#f1f0ea"
+    TEXT_MUTED = "#aaa69a"
+    ACCENT = "#77c7bf"
+    BORDER = "#3a3327"
+    SUCCESS = "#77c7bf"
+    WARN = "#d89b52"
+    DANGER = "#d8665b"
+    SEPARATOR = "#2c2a25"
 
-    FONT_UI = ("Segoe UI Variable", 9) if sys.platform == "win32" else ("SF Pro Text", 11)
-    FONT_TITLE = ("Segoe UI Variable Display", 17, "bold") if sys.platform == "win32" else ("SF Pro Display", 19, "bold")
-    FONT_SUB = ("Segoe UI Variable", 9) if sys.platform == "win32" else ("SF Pro Text", 10)
-    FONT_BTN = ("Segoe UI Variable", 11, "bold") if sys.platform == "win32" else ("SF Pro Text", 12, "bold")
+    FONT_UI = ("Segoe UI", 9) if sys.platform == "win32" else ("SF Pro Text", 11)
+    FONT_TITLE = ("Segoe UI Semibold", 13, "bold") if sys.platform == "win32" else ("SF Pro Display", 15, "bold")
+    FONT_SUB = ("Segoe UI", 8) if sys.platform == "win32" else ("SF Pro Text", 10)
+    FONT_BTN = ("Segoe UI Semibold", 10, "bold") if sys.platform == "win32" else ("SF Pro Text", 11, "bold")
+    FONT_MONO = ("Consolas", 8) if sys.platform == "win32" else ("SF Mono", 9)
 
 
 def apply_app_theme(root: tk.Tk) -> ttk.Style:
     root.configure(bg=Theme.BG)
     style = ttk.Style(root)
     try:
-        if sys.platform == "win32":
-            style.theme_use("vista")
-        else:
-            style.theme_use("clam")
-    except tk.TclError:
         style.theme_use("clam")
+    except tk.TclError:
+        pass
 
     style.configure(".", background=Theme.BG, foreground=Theme.TEXT, font=Theme.FONT_UI)
     style.configure("TFrame", background=Theme.BG)
@@ -48,31 +46,57 @@ def apply_app_theme(root: tk.Tk) -> ttk.Style:
     style.configure("Sub.TLabel", background=Theme.BG, foreground=Theme.TEXT_MUTED, font=Theme.FONT_SUB)
     style.configure("Target.TLabel", background=Theme.BG, foreground=Theme.ACCENT, font=Theme.FONT_UI)
     style.configure("Status.TLabel", background=Theme.BG, foreground=Theme.TEXT_MUTED, font=Theme.FONT_UI)
-
-    style.configure(
-        "Card.TLabelframe",
-        background=Theme.CARD,
-        borderwidth=0,
-        relief="flat",
-    )
-    style.configure(
-        "Card.TLabelframe.Label",
-        background=Theme.CARD,
-        foreground=Theme.TEXT,
-        font=(Theme.FONT_UI[0], 10, "bold"),
-    )
     style.configure("Card.TFrame", background=Theme.CARD)
     style.configure("Soft.TFrame", background=Theme.CARD_SOFT)
     style.configure("Card.TLabel", background=Theme.CARD, foreground=Theme.TEXT, font=Theme.FONT_UI)
     style.configure("CardMuted.TLabel", background=Theme.CARD, foreground=Theme.TEXT_MUTED, font=Theme.FONT_SUB)
     style.configure("CardAccent.TLabel", background=Theme.CARD, foreground=Theme.ACCENT, font=Theme.FONT_UI)
+    style.configure("SectionTitle.TLabel", background=Theme.CARD, foreground=Theme.PRIMARY, font=Theme.FONT_MONO)
 
     style.configure("TCheckbutton", background=Theme.CARD, font=Theme.FONT_UI)
     style.configure("TRadiobutton", background=Theme.CARD, font=Theme.FONT_UI)
-    style.configure("TButton", padding=(12, 6), font=Theme.FONT_UI)
-    style.map("TButton", foreground=[("active", Theme.PRIMARY)])
-    style.configure("TEntry", padding=(6, 4))
-    style.configure("TSpinbox", padding=(6, 4))
+    style.map(
+        "TCheckbutton",
+        background=[("active", Theme.CARD)],
+        foreground=[("active", Theme.TEXT)],
+    )
+    style.map(
+        "TRadiobutton",
+        background=[("active", Theme.CARD)],
+        foreground=[("active", Theme.TEXT)],
+    )
+    style.configure(
+        "TButton",
+        padding=(8, 4),
+        font=Theme.FONT_UI,
+        background=Theme.CARD_SOFT,
+        foreground=Theme.TEXT,
+        bordercolor=Theme.BORDER,
+        lightcolor=Theme.CARD_SOFT,
+        darkcolor=Theme.CARD_SOFT,
+        relief="flat",
+    )
+    style.map(
+        "TButton",
+        background=[("active", Theme.SEPARATOR)],
+        foreground=[("active", Theme.TEXT)],
+    )
+    style.configure(
+        "TEntry",
+        padding=(5, 3),
+        fieldbackground=Theme.CARD_SOFT,
+        foreground=Theme.TEXT,
+        insertcolor=Theme.TEXT,
+        bordercolor=Theme.BORDER,
+    )
+    style.configure(
+        "TSpinbox",
+        padding=(5, 3),
+        fieldbackground=Theme.CARD_SOFT,
+        foreground=Theme.TEXT,
+        arrowcolor=Theme.TEXT_MUTED,
+        bordercolor=Theme.BORDER,
+    )
 
     style.configure("TNotebook", background=Theme.BG)
     style.configure("Horizontal.TScale", background=Theme.CARD)
@@ -91,8 +115,8 @@ def style_primary_button(btn: tk.Button) -> None:
         bd=0,
         highlightthickness=0,
         font=Theme.FONT_BTN,
-        padx=14,
-        pady=4,
+        padx=12,
+        pady=3,
     )
 
 
@@ -106,17 +130,17 @@ def style_mini_button(btn: tk.Button) -> None:
         cursor="hand2",
         bd=0,
         highlightthickness=0,
-        font=("Microsoft YaHei UI", 14, "bold") if sys.platform == "win32" else ("PingFang SC", 15, "bold"),
-        padx=10,
-        pady=3,
+        font=("Segoe UI Semibold", 12, "bold") if sys.platform == "win32" else ("SF Pro Text", 13, "bold"),
+        padx=8,
+        pady=2,
     )
 
 
 def style_secondary_button(btn: tk.Button) -> None:
     btn.configure(
-        bg="#f2f2f7",
+        bg=Theme.CARD_SOFT,
         fg=Theme.TEXT,
-        activebackground="#e5e5ea",
+        activebackground=Theme.SEPARATOR,
         activeforeground=Theme.TEXT,
         relief="flat",
         cursor="hand2",
@@ -124,8 +148,8 @@ def style_secondary_button(btn: tk.Button) -> None:
         highlightthickness=1,
         highlightbackground=Theme.BORDER,
         font=Theme.FONT_UI,
-        padx=8,
-        pady=3,
+        padx=7,
+        pady=2,
     )
 
 

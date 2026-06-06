@@ -1003,8 +1003,8 @@ class FloatingApp:
 
         self.status_var = tk.StringVar(value="就绪")
 
-        self.full_frame = ttk.Frame(self.root, padding=18)
-        self.mini_frame = ttk.Frame(self.root, padding=10)
+        self.full_frame = ttk.Frame(self.root, padding=10)
+        self.mini_frame = ttk.Frame(self.root, padding=8)
 
         self._build_full_ui(self.full_frame)
         self._build_mini_ui(self.mini_frame)
@@ -1033,12 +1033,21 @@ class FloatingApp:
         self.status_mini = ttk.Label(frame, textvariable=self.status_var, style="Status.TLabel", wraplength=220)
         self.status_mini.pack(fill="x", pady=(6, 0))
 
+    def _panel(self, parent: ttk.Frame, title: str) -> tuple[tk.Frame, ttk.Frame]:
+        shell = tk.Frame(parent, bg=Theme.CARD, highlightbackground=Theme.BORDER, highlightthickness=1, bd=0)
+        body = ttk.Frame(shell, padding=(10, 7), style="Card.TFrame")
+        body.pack(fill="both", expand=True)
+        ttk.Label(body, text=title.upper(), style="SectionTitle.TLabel").grid(
+            row=0, column=0, columnspan=2, sticky="w", padx=4, pady=(0, 5)
+        )
+        return shell, body
+
     def _build_full_ui(self, frame: ttk.Frame):
-        pad = {"padx": 10, "pady": 5}
+        pad = {"padx": 4, "pady": 3}
         row = 0
 
         hdr = tk.Frame(frame, bg=Theme.BG, bd=0)
-        hdr.grid(row=row, column=0, columnspan=2, sticky="ew", pady=(0, 16))
+        hdr.grid(row=row, column=0, columnspan=2, sticky="ew", pady=(0, 8))
         hdr.grid_columnconfigure(0, weight=1)
         title_col = tk.Frame(hdr, bg=Theme.BG)
         title_col.grid(row=0, column=0, sticky="ew")
@@ -1053,7 +1062,7 @@ class FloatingApp:
         plat = "Windows 完整功能" if IS_WINDOWS else "macOS（整屏/区域）"
         tk.Label(
             title_col,
-            text=f"{APP_NAME} · 多屏截图 · 自动粘贴发送 · {plat}",
+            text=f"{APP_NAME} · {plat}",
             bg=Theme.BG,
             fg=Theme.TEXT_MUTED,
             font=Theme.FONT_SUB,
@@ -1065,26 +1074,37 @@ class FloatingApp:
             bg=Theme.PRIMARY,
             fg=Theme.PRIMARY_FG,
             font=Theme.FONT_BTN,
-            padx=14,
-            pady=5,
+            padx=10,
+            pady=3,
         )
-        hotkey.grid(row=0, column=1, padx=(12, 0), pady=(2, 0))
+        hotkey.grid(row=0, column=1, padx=(10, 0), pady=(2, 0))
         row += 1
 
-        card_cap = tk.Frame(frame, bg=Theme.CARD, highlightbackground=Theme.SEPARATOR, highlightthickness=1, bd=0)
-        card_cap.grid(row=row, column=0, columnspan=2, sticky="ew", pady=(0, 10))
+        self.run_btn = tk.Button(
+            frame,
+            text="截图并粘贴",
+            command=self.trigger_async,
+            width=24,
+            height=1,
+        )
+        style_primary_button(self.run_btn)
+        self.run_btn.grid(row=row, column=0, sticky="ew", padx=(4, 5), pady=(0, 8))
+
+        self.compact_var = tk.BooleanVar(value=bool(self.cfg.get("compact_mode")))
+        self.compact_btn = tk.Button(frame, text="小浮窗", width=9, command=self._toggle_compact_from_button)
+        style_secondary_button(self.compact_btn)
+        self.compact_btn.grid(row=row, column=1, sticky="ew", padx=(5, 4), pady=(0, 8))
         row += 1
-        cap_inner = ttk.Frame(card_cap, padding=14, style="Card.TFrame")
-        cap_inner.pack(fill="both", expand=True)
+
+        self.status_label = ttk.Label(frame, textvariable=self.status_var, style="Status.TLabel", wraplength=360, anchor="center")
+        self.status_label.grid(row=row, column=0, columnspan=2, sticky="ew", padx=4, pady=(0, 8))
+        row += 1
+
+        card_cap, cap_inner = self._panel(frame, "capture")
+        card_cap.grid(row=row, column=0, columnspan=2, sticky="ew", pady=(0, 8))
+        row += 1
         self._cap_inner = cap_inner
-        cr = 0
-        ttk.Label(cap_inner, text="截图", style="Card.TLabel", font=(Theme.FONT_UI[0], 11, "bold")).grid(
-            row=cr, column=0, sticky="w", **pad
-        )
-        ttk.Label(cap_inner, text="默认截取全部屏幕，也可指定单个显示器。", style="CardMuted.TLabel").grid(
-            row=cr, column=1, sticky="w", **pad
-        )
-        cr += 1
+        cr = 1
 
         ttk.Label(cap_inner, text="来源", style="Card.TLabel").grid(row=cr, column=0, sticky="w", **pad)
         self.capture_source_var = tk.StringVar(value=self.cfg.get("capture_source", "screen"))
@@ -1108,8 +1128,8 @@ class FloatingApp:
         self._screen_frame = ttk.Frame(self._screen_col, style="Card.TFrame")
         self._screen_frame.pack(anchor="w")
         ttk.Button(
-            self._screen_col, text="刷新", width=8, command=self._rebuild_screen_radios,
-        ).pack(anchor="w", pady=(2, 0))
+            self._screen_col, text="刷新屏幕", width=10, command=self._rebuild_screen_radios,
+        ).pack(anchor="w", pady=(3, 0))
         self._screen_row = cr
         self._screen_grid = [
             (self._screen_label, {"row": cr, "column": 0, "sticky": "nw", **pad}),
@@ -1132,8 +1152,8 @@ class FloatingApp:
         scroll = ttk.Scrollbar(list_wrap, orient="vertical")
         self.window_listbox = tk.Listbox(
             list_wrap,
-            height=6,
-            width=42,
+            height=4,
+            width=36,
             activestyle="dotbox",
             exportselection=False,
             yscrollcommand=scroll.set,
@@ -1174,39 +1194,25 @@ class FloatingApp:
         ]
         cr += 1
 
-        card_paste = tk.Frame(frame, bg=Theme.CARD, highlightbackground=Theme.SEPARATOR, highlightthickness=1, bd=0)
-        card_paste.grid(row=row, column=0, columnspan=2, sticky="ew", pady=(0, 10))
+        card_paste, paste = self._panel(frame, "automation")
+        card_paste.grid(row=row, column=0, columnspan=2, sticky="ew", pady=(0, 8))
         row += 1
-        paste = ttk.Frame(card_paste, padding=14, style="Card.TFrame")
-        paste.pack(fill="both", expand=True)
 
         self.auto_send_var = tk.BooleanVar(value=self.cfg["auto_send"])
-        pr = 0
-        ttk.Label(paste, text="发送", style="Card.TLabel", font=(Theme.FONT_UI[0], 11, "bold")).grid(
-            row=pr, column=0, sticky="w", **pad
-        )
-        self.compact_var = tk.BooleanVar(value=bool(self.cfg.get("compact_mode")))
-        ttk.Checkbutton(
-            paste,
-            text="小浮窗模式",
-            variable=self.compact_var,
-            command=self._toggle_compact,
-        ).grid(row=pr, column=1, sticky="w", **pad)
-        pr += 1
+        pr = 1
 
         ttk.Checkbutton(
-            paste, text="截图后自动发送（粘贴后回车/点击）",
+            paste, text="自动发送",
             variable=self.auto_send_var,
             command=self._save_now,
-        ).grid(row=pr, column=0, columnspan=2, sticky="w", **pad)
-        pr += 1
+        ).grid(row=pr, column=0, sticky="w", **pad)
 
         self.save_var = tk.BooleanVar(value=self.cfg["save_backup"])
         ttk.Checkbutton(
-            paste, text="保存本地备份",
+            paste, text="保存备份",
             variable=self.save_var,
             command=self._save_now,
-        ).grid(row=pr, column=0, columnspan=2, sticky="w", **pad)
+        ).grid(row=pr, column=1, sticky="w", **pad)
         pr += 1
 
         self.compress_var = tk.BooleanVar(value=self.cfg["compress"])
@@ -1214,7 +1220,7 @@ class FloatingApp:
             paste, text="压缩图片",
             variable=self.compress_var,
             command=self._save_now,
-        ).grid(row=pr, column=0, columnspan=2, sticky="w", **pad)
+        ).grid(row=pr, column=0, sticky="w", **pad)
         pr += 1
 
         ttk.Label(paste, text="发送方式", style="Card.TLabel").grid(row=pr, column=0, sticky="w", **pad)
@@ -1240,7 +1246,7 @@ class FloatingApp:
         ttk.Button(coord_frame, text="保存", command=self._save_now, width=5).pack(side="left", padx=4)
         pr += 1
 
-        ttk.Label(paste, text="切窗延迟(秒)", style="Card.TLabel").grid(row=pr, column=0, sticky="w", **pad)
+        ttk.Label(paste, text="切窗延迟", style="Card.TLabel").grid(row=pr, column=0, sticky="w", **pad)
         self.switch_delay_var = tk.DoubleVar(value=self.cfg["switch_delay"])
         ttk.Spinbox(
             paste, from_=0.0, to=10.0, increment=0.5, width=6,
@@ -1248,7 +1254,7 @@ class FloatingApp:
         ).grid(row=pr, column=1, sticky="w", **pad)
         pr += 1
 
-        ttk.Label(paste, text="上传等待(秒)", style="Card.TLabel").grid(row=pr, column=0, sticky="w", **pad)
+        ttk.Label(paste, text="上传等待", style="Card.TLabel").grid(row=pr, column=0, sticky="w", **pad)
         self.upload_delay_var = tk.DoubleVar(value=self.cfg["upload_delay"])
         ttk.Spinbox(
             paste, from_=0.0, to=15.0, increment=0.5, width=6,
@@ -1256,30 +1262,15 @@ class FloatingApp:
         ).grid(row=pr, column=1, sticky="w", **pad)
         pr += 1
 
-        ttk.Label(paste, text="浮窗透明度", style="Card.TLabel").grid(row=pr, column=0, sticky="w", **pad)
+        ttk.Label(paste, text="透明度", style="Card.TLabel").grid(row=pr, column=0, sticky="w", **pad)
         self.opacity_var = tk.DoubleVar(value=self.cfg["opacity"])
         ttk.Scale(
             paste, from_=0.3, to=1.0, orient="horizontal",
             variable=self.opacity_var, command=self._on_opacity_change,
         ).grid(row=pr, column=1, sticky="ew", **pad)
 
-        self.run_btn = tk.Button(
-            frame,
-            text="截图并粘贴  ·  F8",
-            command=self.trigger_async,
-            width=30,
-            height=2,
-        )
-        style_primary_button(self.run_btn)
-        self.run_btn.grid(row=row, column=0, columnspan=2, padx=pad["padx"], pady=(12, 7))
-        row += 1
-
-        self.status_label = ttk.Label(frame, textvariable=self.status_var, style="Status.TLabel", wraplength=430, anchor="center")
-        self.status_label.grid(row=row, column=0, columnspan=2, sticky="ew", **pad)
-        row += 1
-
         ttk.Label(frame, text=REPO_URL, style="Muted.TLabel", cursor="hand2").grid(
-            row=row, column=0, columnspan=2, sticky="ew", **pad
+            row=row, column=0, columnspan=2, sticky="ew", padx=4, pady=(0, 0)
         )
 
         self._last_capture_source = self.cfg.get("capture_source", "screen")
@@ -1465,6 +1456,10 @@ class FloatingApp:
         self.root.update_idletasks()
         self._place_window_at(x, y)
         self._save_window_geometry()
+
+    def _toggle_compact_from_button(self):
+        self.compact_var.set(True)
+        self._toggle_compact()
 
     def _expand_from_compact(self):
         self.compact_var.set(False)
