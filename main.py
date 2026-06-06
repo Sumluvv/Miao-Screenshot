@@ -15,9 +15,32 @@ import tempfile
 import threading
 import time
 import traceback
+import ctypes
 from datetime import datetime
 from io import BytesIO
 from pathlib import Path
+
+
+def _early_enable_dpi_awareness() -> None:
+    if sys.platform != "win32":
+        return
+    try:
+        ctypes.windll.user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))
+        return
+    except Exception:
+        pass
+    try:
+        ctypes.windll.shcore.SetProcessDpiAwareness(2)
+        return
+    except Exception:
+        pass
+    try:
+        ctypes.windll.user32.SetProcessDPIAware()
+    except Exception:
+        pass
+
+
+_early_enable_dpi_awareness()
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")
@@ -73,31 +96,8 @@ if IS_WINDOWS:
 else:
     win32clipboard = None
 
-import ctypes
 from ctypes import wintypes
 
-
-def enable_dpi_awareness() -> None:
-    """让 Windows 缩放环境下的坐标和截图像素保持一致。"""
-    if not IS_WINDOWS:
-        return
-    try:
-        ctypes.windll.user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))
-        return
-    except Exception:
-        pass
-    try:
-        ctypes.windll.shcore.SetProcessDpiAwareness(2)
-        return
-    except Exception:
-        pass
-    try:
-        ctypes.windll.user32.SetProcessDPIAware()
-    except Exception:
-        pass
-
-
-enable_dpi_awareness()
 
 # ---------- Windows user32 / gdi32（仅 Win）----------
 GW_OWNER = 4
@@ -108,6 +108,7 @@ DIB_RGB_COLORS = 0
 BI_RGB = 0
 GWL_EXSTYLE = -20
 WS_EX_TOOLWINDOW = 0x00000080
+ENUM_CURRENT_SETTINGS = -1
 _enum_windows_cb_ref = None
 _monitor_enum_proc_ref = None
 _display_monitors_cache = None
@@ -144,6 +145,32 @@ if IS_WINDOWS:
             ("rcWork", RECT),
             ("dwFlags", wintypes.DWORD),
             ("szDevice", wintypes.WCHAR * 32),
+        ]
+
+    class DEVMODEW(ctypes.Structure):
+        _fields_ = [
+            ("dmDeviceName", wintypes.WCHAR * 32),
+            ("dmSpecVersion", wintypes.WORD),
+            ("dmDriverVersion", wintypes.WORD),
+            ("dmSize", wintypes.WORD),
+            ("dmDriverExtra", wintypes.WORD),
+            ("dmFields", wintypes.DWORD),
+            ("dmPositionX", wintypes.LONG),
+            ("dmPositionY", wintypes.LONG),
+            ("dmDisplayOrientation", wintypes.DWORD),
+            ("dmDisplayFixedOutput", wintypes.DWORD),
+            ("dmColor", wintypes.SHORT),
+            ("dmDuplex", wintypes.SHORT),
+            ("dmYResolution", wintypes.SHORT),
+            ("dmTTOption", wintypes.SHORT),
+            ("dmCollate", wintypes.SHORT),
+            ("dmFormName", wintypes.WCHAR * 32),
+            ("dmLogPixels", wintypes.WORD),
+            ("dmBitsPerPel", wintypes.DWORD),
+            ("dmPelsWidth", wintypes.DWORD),
+            ("dmPelsHeight", wintypes.DWORD),
+            ("dmDisplayFlags", wintypes.DWORD),
+            ("dmDisplayFrequency", wintypes.DWORD),
         ]
 
     _user32 = ctypes.WinDLL("user32", use_last_error=True)
@@ -205,8 +232,10 @@ if IS_WINDOWS:
     _user32.EnumDisplayMonitors.restype = wintypes.BOOL
     _user32.GetMonitorInfoW.argtypes = [wintypes.HMONITOR, ctypes.POINTER(MONITORINFOEXW)]
     _user32.GetMonitorInfoW.restype = wintypes.BOOL
+    _user32.EnumDisplaySettingsW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, ctypes.POINTER(DEVMODEW)]
+    _user32.EnumDisplaySettingsW.restype = wintypes.BOOL
 else:
-    BITMAPINFOHEADER = RECT = MONITORINFOEXW = None  # type: ignore
+    BITMAPINFOHEADER = RECT = MONITORINFOEXW = DEVMODEW = None  # type: ignore
     _user32 = _gdi32 = None
     WNDENUMPROC = MONITORENUMPROC = None  # type: ignore
     MONITORINFOF_PRIMARY = 1
@@ -299,6 +328,74 @@ def _mss():
     return mss.MSS() if hasattr(mss, "MSS") else mss.mss()
 
 
+def _label_monitors(raw: list) -> list:
+    raw.sort(key=lambda m: (m["left"], m["top"]))
+    for i, m in enumerate(raw, 1):
+        tag = "主屏" if m.get("primary") else "副屏"
+        source = m.get("source", "")
+        source_label = f" · {source}" if source else ""
+        m["index"] = i
+        m["label"] = f"屏幕{i}  {m['width']}×{m['height']}  [{tag}]{source_label}"
+    return raw
+
+
+def _get_mss_monitors() -> list:
+    with _mss() as sct:
+        raw = [dict(m) for m in sct.monitors[1:]]
+        for i, m in enumerate(raw):
+            m["primary"] = bool(m.get("is_primary", i == 0))
+            m["source"] = "mss"
+    return raw
+
+
+def _get_windows_display_settings_monitors() -> list:
+    if not IS_WINDOWS:
+        return []
+    raw = []
+
+    @MONITORENUMPROC
+    def _enum_proc(hmon, _hdc, _rect, _lparam):
+        info = MONITORINFOEXW()
+        info.cbSize = ctypes.sizeof(MONITORINFOEXW)
+        if not _user32.GetMonitorInfoW(hmon, ctypes.byref(info)):
+            return True
+
+        dev = DEVMODEW()
+        dev.dmSize = ctypes.sizeof(DEVMODEW)
+        ok = bool(_user32.EnumDisplaySettingsW(info.szDevice, ENUM_CURRENT_SETTINGS, ctypes.byref(dev)))
+        if ok and int(dev.dmPelsWidth) >= 8 and int(dev.dmPelsHeight) >= 8:
+            raw.append({
+                "left": int(dev.dmPositionX),
+                "top": int(dev.dmPositionY),
+                "width": int(dev.dmPelsWidth),
+                "height": int(dev.dmPelsHeight),
+                "primary": bool(info.dwFlags & MONITORINFOF_PRIMARY),
+                "device": str(info.szDevice),
+                "source": "系统",
+            })
+            return True
+
+        r = info.rcMonitor
+        w, h = int(r.right - r.left), int(r.bottom - r.top)
+        if w >= 8 and h >= 8:
+            raw.append({
+                "left": int(r.left),
+                "top": int(r.top),
+                "width": w,
+                "height": h,
+                "primary": bool(info.dwFlags & MONITORINFOF_PRIMARY),
+                "device": str(info.szDevice),
+                "source": "系统",
+            })
+        return True
+
+    global _monitor_enum_proc_ref
+    _monitor_enum_proc_ref = _enum_proc
+    if _user32.EnumDisplayMonitors(None, None, _enum_proc, 0):
+        return raw
+    return []
+
+
 def get_display_monitors(refresh: bool = False) -> list:
     """
     枚举显示器，按从左到右、从上到下排序。
@@ -309,59 +406,14 @@ def get_display_monitors(refresh: bool = False) -> list:
     if _display_monitors_cache is not None and not refresh:
         return _display_monitors_cache
 
-    raw = []
+    if IS_WINDOWS:
+        raw = _get_windows_display_settings_monitors()
+        if not raw:
+            raw = _get_mss_monitors()
+    else:
+        raw = _get_mss_monitors()
 
-    # 截图用 mss，显示器矩形也优先用 mss 的物理像素，避免 Windows 缩放下只截到半边。
-    try:
-        with _mss() as sct:
-            raw = [dict(m) for m in sct.monitors[1:]]
-            for i, m in enumerate(raw):
-                m["primary"] = i == 0
-    except Exception:
-        raw = []
-
-    if raw:
-        raw.sort(key=lambda m: (m["left"], m["top"]))
-        for i, m in enumerate(raw, 1):
-            tag = "主屏" if m.get("primary") else "副屏"
-            m["index"] = i
-            m["label"] = f"屏幕{i}  {m['width']}×{m['height']}  [{tag}]"
-        _display_monitors_cache = raw
-        return _display_monitors_cache
-
-    if not IS_WINDOWS:
-        return []
-
-    @MONITORENUMPROC
-    def _enum_proc(hmon, _hdc, _rect, _lparam):
-        info = MONITORINFOEXW()
-        info.cbSize = ctypes.sizeof(MONITORINFOEXW)
-        if _user32.GetMonitorInfoW(hmon, ctypes.byref(info)):
-            r = info.rcMonitor
-            w, h = int(r.right - r.left), int(r.bottom - r.top)
-            if w >= 8 and h >= 8:
-                raw.append({
-                    "left": int(r.left),
-                    "top": int(r.top),
-                    "width": w,
-                    "height": h,
-                    "primary": bool(info.dwFlags & MONITORINFOF_PRIMARY),
-                })
-        return True
-
-    _monitor_enum_proc_ref = _enum_proc
-    if not _user32.EnumDisplayMonitors(None, None, _enum_proc, 0) or not raw:
-        with _mss() as sct:
-            raw = [dict(m) for m in sct.monitors[1:]]
-            for i, m in enumerate(raw):
-                m["primary"] = i == 0
-
-    raw.sort(key=lambda m: (m["left"], m["top"]))
-    for i, m in enumerate(raw, 1):
-        tag = "主屏" if m.get("primary") else "副屏"
-        m["index"] = i
-        m["label"] = f"屏幕{i}  {m['width']}×{m['height']}  [{tag}]"
-    _display_monitors_cache = raw
+    _display_monitors_cache = _label_monitors(raw)
     return _display_monitors_cache
 
 
@@ -374,7 +426,14 @@ def list_monitors():
 
 
 def virtual_screen_dict():
-    """mss monitors[0] 为虚拟桌面整体矩形"""
+    """虚拟桌面整体矩形。Windows 优先用系统显示器模式合成，避免 mss 枚举缩放误差。"""
+    monitors = get_display_monitors()
+    if monitors:
+        left = min(int(m["left"]) for m in monitors)
+        top = min(int(m["top"]) for m in monitors)
+        right = max(int(m["left"]) + int(m["width"]) for m in monitors)
+        bottom = max(int(m["top"]) + int(m["height"]) for m in monitors)
+        return {"left": left, "top": top, "width": right - left, "height": bottom - top}
     with _mss() as sct:
         return dict(sct.monitors[0])
 
@@ -979,7 +1038,7 @@ class FloatingApp:
         row = 0
 
         hdr = tk.Frame(frame, bg=Theme.BG, bd=0)
-        hdr.grid(row=row, column=0, columnspan=2, sticky="ew", pady=(0, 14))
+        hdr.grid(row=row, column=0, columnspan=2, sticky="ew", pady=(0, 16))
         hdr.grid_columnconfigure(0, weight=1)
         title_col = tk.Frame(hdr, bg=Theme.BG)
         title_col.grid(row=0, column=0, sticky="ew")
@@ -1012,25 +1071,24 @@ class FloatingApp:
         hotkey.grid(row=0, column=1, padx=(12, 0), pady=(2, 0))
         row += 1
 
-        self.compact_var = tk.BooleanVar(value=bool(self.cfg.get("compact_mode")))
-        ttk.Checkbutton(
-            frame,
-            text="小浮窗模式（只保留截图按钮）",
-            variable=self.compact_var,
-            command=self._toggle_compact,
-        ).grid(row=row, column=0, columnspan=2, sticky="w", **pad)
-        row += 1
-
-        card_cap = ttk.LabelFrame(frame, text="  截图设置  ", padding=12, style="Card.TLabelframe")
+        card_cap = tk.Frame(frame, bg=Theme.CARD, highlightbackground=Theme.SEPARATOR, highlightthickness=1, bd=0)
         card_cap.grid(row=row, column=0, columnspan=2, sticky="ew", pady=(0, 10))
         row += 1
-        cap_inner = card_cap
+        cap_inner = ttk.Frame(card_cap, padding=14, style="Card.TFrame")
+        cap_inner.pack(fill="both", expand=True)
         self._cap_inner = cap_inner
         cr = 0
+        ttk.Label(cap_inner, text="截图", style="Card.TLabel", font=(Theme.FONT_UI[0], 11, "bold")).grid(
+            row=cr, column=0, sticky="w", **pad
+        )
+        ttk.Label(cap_inner, text="默认截取全部屏幕，也可指定单个显示器。", style="CardMuted.TLabel").grid(
+            row=cr, column=1, sticky="w", **pad
+        )
+        cr += 1
 
         ttk.Label(cap_inner, text="来源", style="Card.TLabel").grid(row=cr, column=0, sticky="w", **pad)
         self.capture_source_var = tk.StringVar(value=self.cfg.get("capture_source", "screen"))
-        src_fr = ttk.Frame(cap_inner)
+        src_fr = ttk.Frame(cap_inner, style="Card.TFrame")
         src_fr.grid(row=cr, column=1, sticky="w", **pad)
         src_items = [("screen", "整屏"), ("region", "区域")]
         if IS_WINDOWS:
@@ -1045,9 +1103,9 @@ class FloatingApp:
         self._screen_label = ttk.Label(cap_inner, text="显示器", style="Card.TLabel")
         self._screen_label.grid(row=cr, column=0, sticky="nw", **pad)
         self.screen_var = tk.IntVar(value=self.cfg["screen_index"])
-        self._screen_col = ttk.Frame(cap_inner)
+        self._screen_col = ttk.Frame(cap_inner, style="Card.TFrame")
         self._screen_col.grid(row=cr, column=1, sticky="w", **pad)
-        self._screen_frame = ttk.Frame(self._screen_col)
+        self._screen_frame = ttk.Frame(self._screen_col, style="Card.TFrame")
         self._screen_frame.pack(anchor="w")
         ttk.Button(
             self._screen_col, text="刷新", width=8, command=self._rebuild_screen_radios,
@@ -1061,15 +1119,15 @@ class FloatingApp:
 
         self._window_label = ttk.Label(cap_inner, text="截取窗口", style="Card.TLabel")
         self._window_label.grid(row=cr, column=0, sticky="nw", **pad)
-        self.win_fr = ttk.Frame(cap_inner)
+        self.win_fr = ttk.Frame(cap_inner, style="Card.TFrame")
         self.win_fr.grid(row=cr, column=1, sticky="nsew", **pad)
-        btn_row = ttk.Frame(self.win_fr)
+        btn_row = ttk.Frame(self.win_fr, style="Card.TFrame")
         btn_row.pack(fill="x")
         ttk.Button(btn_row, text="刷新列表", width=10, command=self._refresh_window_list).pack(side="left")
         ttk.Button(
             btn_row, text="拾取当前窗口", width=12, command=self._pick_foreground_capture_window,
         ).pack(side="left", padx=4)
-        list_wrap = ttk.Frame(self.win_fr)
+        list_wrap = ttk.Frame(self.win_fr, style="Card.TFrame")
         list_wrap.pack(fill="both", expand=True, pady=4)
         scroll = ttk.Scrollbar(list_wrap, orient="vertical")
         self.window_listbox = tk.Listbox(
@@ -1095,7 +1153,7 @@ class FloatingApp:
         self._list_refreshing = False
         cr += 1
 
-        self.reg_fr = ttk.Frame(cap_inner)
+        self.reg_fr = ttk.Frame(cap_inner, style="Card.TFrame")
         self.reg_fr.grid(row=cr, column=0, columnspan=2, sticky="ew", **pad)
         self.region_continuous_var = tk.BooleanVar(value=bool(self.cfg.get("region_continuous", True)))
         ttk.Checkbutton(
@@ -1104,7 +1162,7 @@ class FloatingApp:
             variable=self.region_continuous_var,
             command=self._save_now,
         ).pack(anchor="w")
-        btn_line = ttk.Frame(self.reg_fr)
+        btn_line = ttk.Frame(self.reg_fr, style="Card.TFrame")
         btn_line.pack(anchor="w", pady=2)
         ttk.Button(btn_line, text="选取区域", command=self._pick_region_clicked).pack(side="left", padx=2)
         ttk.Button(btn_line, text="清除区域", command=self._clear_region_clicked).pack(side="left", padx=2)
@@ -1116,13 +1174,26 @@ class FloatingApp:
         ]
         cr += 1
 
-        card_paste = ttk.LabelFrame(frame, text="  粘贴与发送  ", padding=12, style="Card.TLabelframe")
+        card_paste = tk.Frame(frame, bg=Theme.CARD, highlightbackground=Theme.SEPARATOR, highlightthickness=1, bd=0)
         card_paste.grid(row=row, column=0, columnspan=2, sticky="ew", pady=(0, 10))
         row += 1
-        paste = card_paste
+        paste = ttk.Frame(card_paste, padding=14, style="Card.TFrame")
+        paste.pack(fill="both", expand=True)
 
         self.auto_send_var = tk.BooleanVar(value=self.cfg["auto_send"])
         pr = 0
+        ttk.Label(paste, text="发送", style="Card.TLabel", font=(Theme.FONT_UI[0], 11, "bold")).grid(
+            row=pr, column=0, sticky="w", **pad
+        )
+        self.compact_var = tk.BooleanVar(value=bool(self.cfg.get("compact_mode")))
+        ttk.Checkbutton(
+            paste,
+            text="小浮窗模式",
+            variable=self.compact_var,
+            command=self._toggle_compact,
+        ).grid(row=pr, column=1, sticky="w", **pad)
+        pr += 1
+
         ttk.Checkbutton(
             paste, text="截图后自动发送（粘贴后回车/点击）",
             variable=self.auto_send_var,
@@ -1148,7 +1219,7 @@ class FloatingApp:
 
         ttk.Label(paste, text="发送方式", style="Card.TLabel").grid(row=pr, column=0, sticky="w", **pad)
         self.send_mode_var = tk.StringVar(value=self.cfg["send_mode"])
-        mode_frame = ttk.Frame(paste)
+        mode_frame = ttk.Frame(paste, style="Card.TFrame")
         mode_frame.grid(row=pr, column=1, sticky="w", **pad)
         ttk.Radiobutton(mode_frame, text="回车", variable=self.send_mode_var, value="enter", command=self._save_now).pack(
             side="left"
@@ -1158,7 +1229,7 @@ class FloatingApp:
         )
         pr += 1
 
-        coord_frame = ttk.Frame(paste)
+        coord_frame = ttk.Frame(paste, style="Card.TFrame")
         coord_frame.grid(row=pr, column=0, columnspan=2, sticky="w", **pad)
         ttk.Label(coord_frame, text="发送按钮坐标 X:", style="Card.TLabel").pack(side="left")
         self.x_var = tk.IntVar(value=self.cfg["click_x"])
