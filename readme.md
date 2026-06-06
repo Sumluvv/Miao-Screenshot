@@ -2,7 +2,7 @@
 
 双屏 / 多屏用户的一键截图小工具：截取整屏、窗口或区域，自动复制到剪贴板，并可粘贴到当前输入框后自动发送。适合频繁向 AI、Office、浏览器或聊天工具发送截图的场景。
 
-![version](https://img.shields.io/badge/version-3.0.6-blue)
+![version](https://img.shields.io/badge/version-3.0.7-blue)
 ![Windows](https://img.shields.io/badge/Windows-安装版%20%2F%20免安装-green)
 ![macOS](https://img.shields.io/badge/macOS-整屏%20%2F%20区域-orange)
 
@@ -80,8 +80,8 @@ chmod +x scripts/build_macos.sh
 仓库已包含 `.github/workflows/release.yml`。推送 `v*` 标签会自动构建并创建 Release：
 
 ```powershell
-git tag v3.0.6
-git push origin v3.0.6
+git tag v3.0.7
+git push origin v3.0.7
 ```
 
 Release 附件会包含 Windows 安装版、Windows 免安装版和 macOS zip。发布前可参考 [docs/发布清单.md](docs/发布清单.md)。
