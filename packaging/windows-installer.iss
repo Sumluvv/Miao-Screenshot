@@ -1,6 +1,6 @@
 #define MyAppName "分屏截屏助手"
 #define MyAppExeName "SplitScreenSnap.exe"
-#define MyAppVersion "3.0.7"
+#define MyAppVersion "3.0.8"
 #define MyAppPublisher "Sumluvv"
 #define MyAppURL "https://github.com/Sumluvv/Miao-Screenshot"
 

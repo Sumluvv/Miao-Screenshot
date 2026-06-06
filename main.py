@@ -76,6 +76,29 @@ else:
 import ctypes
 from ctypes import wintypes
 
+
+def enable_dpi_awareness() -> None:
+    """让 Windows 缩放环境下的坐标和截图像素保持一致。"""
+    if not IS_WINDOWS:
+        return
+    try:
+        ctypes.windll.user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))
+        return
+    except Exception:
+        pass
+    try:
+        ctypes.windll.shcore.SetProcessDpiAwareness(2)
+        return
+    except Exception:
+        pass
+    try:
+        ctypes.windll.user32.SetProcessDPIAware()
+    except Exception:
+        pass
+
+
+enable_dpi_awareness()
+
 # ---------- Windows user32 / gdi32（仅 Win）----------
 GW_OWNER = 4
 SW_RESTORE = 9
@@ -221,7 +244,7 @@ APP_TITLE = APP_NAME
 APP_TITLE_EN = APP_NAME_EN
 
 DEFAULT_CONFIG = {
-    "screen_index": 1,
+    "screen_index": 0,
     "auto_send": True,
     "save_backup": False,
     "compress": True,
@@ -288,11 +311,16 @@ def get_display_monitors(refresh: bool = False) -> list:
 
     raw = []
 
-    if not IS_WINDOWS:
+    # 截图用 mss，显示器矩形也优先用 mss 的物理像素，避免 Windows 缩放下只截到半边。
+    try:
         with _mss() as sct:
             raw = [dict(m) for m in sct.monitors[1:]]
             for i, m in enumerate(raw):
                 m["primary"] = i == 0
+    except Exception:
+        raw = []
+
+    if raw:
         raw.sort(key=lambda m: (m["left"], m["top"]))
         for i, m in enumerate(raw, 1):
             tag = "主屏" if m.get("primary") else "副屏"
@@ -300,6 +328,9 @@ def get_display_monitors(refresh: bool = False) -> list:
             m["label"] = f"屏幕{i}  {m['width']}×{m['height']}  [{tag}]"
         _display_monitors_cache = raw
         return _display_monitors_cache
+
+    if not IS_WINDOWS:
+        return []
 
     @MONITORENUMPROC
     def _enum_proc(hmon, _hdc, _rect, _lparam):
@@ -349,6 +380,18 @@ def virtual_screen_dict():
 
 
 def capture_screen(screen_index: int = 1) -> Image.Image:
+    if int(screen_index) == 0:
+        area = virtual_screen_dict()
+        area = {
+            "left": int(area["left"]),
+            "top": int(area["top"]),
+            "width": int(area["width"]),
+            "height": int(area["height"]),
+        }
+        with _mss() as sct:
+            sct_img = sct.grab(area)
+        return Image.frombytes("RGB", sct_img.size, sct_img.bgra, "raw", "BGRX")
+
     monitors = get_display_monitors()
     if screen_index < 1 or screen_index > len(monitors):
         raise ValueError(f"屏幕序号 {screen_index} 超范围，当前共 {len(monitors)} 个屏幕")
@@ -529,7 +572,7 @@ def capture_window(hwnd: int) -> Image.Image:
 def capture_from_cfg(cfg: dict) -> Image.Image:
     src = cfg.get("capture_source", "screen")
     if src == "screen":
-        return capture_screen(int(cfg.get("screen_index", 1)))
+        return capture_screen(int(cfg.get("screen_index", 0)))
     if src == "window":
         if not IS_WINDOWS:
             raise ValueError("窗口截图目前仅支持 Windows，请改用「整屏」或「区域」")
@@ -899,10 +942,10 @@ class FloatingApp:
             except Exception:
                 pass
 
-        self.status_var = tk.StringVar(value="就绪 — 先点输入框所在窗口，再按 F8 或点击截图")
+        self.status_var = tk.StringVar(value="就绪")
 
-        self.full_frame = ttk.Frame(self.root, padding=14)
-        self.mini_frame = ttk.Frame(self.root, padding=8)
+        self.full_frame = ttk.Frame(self.root, padding=18)
+        self.mini_frame = ttk.Frame(self.root, padding=10)
 
         self._build_full_ui(self.full_frame)
         self._build_mini_ui(self.mini_frame)
@@ -927,32 +970,32 @@ class FloatingApp:
         self.settings_btn_mini = tk.Button(row, text="设置", width=7, command=self._expand_from_compact)
         style_secondary_button(self.settings_btn_mini)
         self.settings_btn_mini.pack(side="left")
-        ttk.Label(row, text="快捷键 F8", style="Muted.TLabel").pack(side="left", padx=8)
+        ttk.Label(row, text="F8", style="Muted.TLabel").pack(side="left", padx=8)
         self.status_mini = ttk.Label(frame, textvariable=self.status_var, style="Status.TLabel", wraplength=220)
         self.status_mini.pack(fill="x", pady=(6, 0))
 
     def _build_full_ui(self, frame: ttk.Frame):
-        pad = {"padx": 8, "pady": 4}
+        pad = {"padx": 10, "pady": 5}
         row = 0
 
-        hdr = tk.Frame(frame, bg=Theme.CARD, highlightbackground=Theme.BORDER, highlightthickness=1, bd=0)
-        hdr.grid(row=row, column=0, columnspan=2, sticky="ew", pady=(0, 10))
+        hdr = tk.Frame(frame, bg=Theme.BG, bd=0)
+        hdr.grid(row=row, column=0, columnspan=2, sticky="ew", pady=(0, 14))
         hdr.grid_columnconfigure(0, weight=1)
-        title_col = tk.Frame(hdr, bg=Theme.CARD)
-        title_col.grid(row=0, column=0, sticky="ew", padx=12, pady=10)
+        title_col = tk.Frame(hdr, bg=Theme.BG)
+        title_col.grid(row=0, column=0, sticky="ew")
         tk.Label(
             title_col,
-            text=APP_NAME,
-            bg=Theme.CARD,
-            fg=Theme.PRIMARY,
+            text="Split Screen Snap",
+            bg=Theme.BG,
+            fg=Theme.TEXT,
             font=Theme.FONT_TITLE,
             anchor="w",
         ).pack(anchor="w")
         plat = "Windows 完整功能" if IS_WINDOWS else "macOS（整屏/区域）"
         tk.Label(
             title_col,
-            text=f"多屏截图 · 一键粘贴到输入框 · {plat}",
-            bg=Theme.CARD,
+            text=f"{APP_NAME} · 多屏截图 · 自动粘贴发送 · {plat}",
+            bg=Theme.BG,
             fg=Theme.TEXT_MUTED,
             font=Theme.FONT_SUB,
             anchor="w",
@@ -963,10 +1006,10 @@ class FloatingApp:
             bg=Theme.PRIMARY,
             fg=Theme.PRIMARY_FG,
             font=Theme.FONT_BTN,
-            padx=12,
-            pady=6,
+            padx=14,
+            pady=5,
         )
-        hotkey.grid(row=0, column=1, padx=(0, 12), pady=10)
+        hotkey.grid(row=0, column=1, padx=(12, 0), pady=(2, 0))
         row += 1
 
         self.compact_var = tk.BooleanVar(value=bool(self.cfg.get("compact_mode")))
@@ -978,8 +1021,8 @@ class FloatingApp:
         ).grid(row=row, column=0, columnspan=2, sticky="w", **pad)
         row += 1
 
-        card_cap = ttk.LabelFrame(frame, text=" 截图 ", padding=10, style="Card.TLabelframe")
-        card_cap.grid(row=row, column=0, columnspan=2, sticky="ew", pady=(0, 6))
+        card_cap = ttk.LabelFrame(frame, text="  截图设置  ", padding=12, style="Card.TLabelframe")
+        card_cap.grid(row=row, column=0, columnspan=2, sticky="ew", pady=(0, 10))
         row += 1
         cap_inner = card_cap
         self._cap_inner = cap_inner
@@ -1073,8 +1116,8 @@ class FloatingApp:
         ]
         cr += 1
 
-        card_paste = ttk.LabelFrame(frame, text=" 粘贴与发送 ", padding=10, style="Card.TLabelframe")
-        card_paste.grid(row=row, column=0, columnspan=2, sticky="ew", pady=(0, 6))
+        card_paste = ttk.LabelFrame(frame, text="  粘贴与发送  ", padding=12, style="Card.TLabelframe")
+        card_paste.grid(row=row, column=0, columnspan=2, sticky="ew", pady=(0, 10))
         row += 1
         paste = card_paste
 
@@ -1151,27 +1194,21 @@ class FloatingApp:
 
         self.run_btn = tk.Button(
             frame,
-            text="截图并粘贴到输入框  ·  F8",
+            text="截图并粘贴  ·  F8",
             command=self.trigger_async,
-            width=32,
+            width=30,
             height=2,
         )
         style_primary_button(self.run_btn)
-        self.run_btn.grid(row=row, column=0, columnspan=2, padx=pad["padx"], pady=(10, 6))
+        self.run_btn.grid(row=row, column=0, columnspan=2, padx=pad["padx"], pady=(12, 7))
         row += 1
 
-        self.status_label = ttk.Label(frame, textvariable=self.status_var, style="Status.TLabel", wraplength=430)
+        self.status_label = ttk.Label(frame, textvariable=self.status_var, style="Status.TLabel", wraplength=430, anchor="center")
         self.status_label.grid(row=row, column=0, columnspan=2, sticky="ew", **pad)
         row += 1
 
-        self.target_var = tk.StringVar(value="输入框窗口: 点一下要粘贴的输入框所在窗口")
-        ttk.Label(frame, textvariable=self.target_var, style="Target.TLabel", wraplength=430).grid(
-            row=row, column=0, columnspan=2, sticky="w", **pad
-        )
-        row += 1
-
         ttk.Label(frame, text=REPO_URL, style="Muted.TLabel", cursor="hand2").grid(
-            row=row, column=0, columnspan=2, sticky="w", **pad
+            row=row, column=0, columnspan=2, sticky="ew", **pad
         )
 
         self._last_capture_source = self.cfg.get("capture_source", "screen")
@@ -1319,10 +1356,21 @@ class FloatingApp:
         if not monitors:
             ttk.Label(self._screen_frame, text="未检测到显示器", foreground="red").pack(anchor="w")
             return
-        cur = int(self.screen_var.get() or 1)
-        if cur < 1 or cur > len(monitors):
-            cur = 1
-            self.screen_var.set(1)
+        cur = int(self.screen_var.get())
+        if cur < 0 or cur > len(monitors):
+            cur = 0
+            self.screen_var.set(0)
+        try:
+            all_screen = virtual_screen_dict()
+            ttk.Radiobutton(
+                self._screen_frame,
+                text=f"全部屏幕  {all_screen['width']}×{all_screen['height']}",
+                variable=self.screen_var,
+                value=0,
+                command=self._save_now,
+            ).pack(anchor="w")
+        except Exception:
+            pass
         for m in monitors:
             ttk.Radiobutton(
                 self._screen_frame,
@@ -1377,8 +1425,7 @@ class FloatingApp:
                     self._last_hwnd = hwnd
                     self._last_title = title
                     short = title if len(title) <= 38 else title[:35] + "..."
-                    if hasattr(self, "target_var"):
-                        self.target_var.set(f"输入框窗口: {short}")
+                    print(f"[目标窗口] {short}")
         except Exception as e:
             print(f"[窗口跟踪] {e}")
         self.root.after(300, self._schedule_track_window)
@@ -1508,7 +1555,7 @@ class FloatingApp:
                     time.sleep(max(1.0, float(cfg["switch_delay"])))
             else:
                 sw = float(cfg["switch_delay"])
-                report(f"未记录输入框窗口，等待 {sw}s …")
+                report(f"等待切回目标应用 {sw}s …")
                 time.sleep(sw)
 
             auto_paste_and_send(
