@@ -42,7 +42,21 @@ jobs:
       - name: Build Windows installer
         run: |
           choco install innosetup -y
-          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" packaging/windows-installer.iss
+          $candidates = @(
+            "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+            "${env:ProgramFiles}\Inno Setup 6\ISCC.exe"
+          )
+          $iscc = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $iscc) {
+            $iscc = Get-ChildItem -Path "${env:ProgramFiles(x86)}","${env:ProgramFiles}" -Filter ISCC.exe -Recurse -ErrorAction SilentlyContinue |
+              Select-Object -First 1 -ExpandProperty FullName
+          }
+          if (-not $iscc) {
+            throw "ISCC.exe not found after installing Inno Setup"
+          }
+          Push-Location packaging
+          & $iscc windows-installer.iss
+          Pop-Location
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4

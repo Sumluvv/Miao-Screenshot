@@ -1,6 +1,6 @@
 #define MyAppName "分屏截屏助手"
 #define MyAppExeName "SplitScreenSnap.exe"
-#define MyAppVersion "3.0.5"
+#define MyAppVersion "3.0.6"
 #define MyAppPublisher "Sumluvv"
 #define MyAppURL "https://github.com/Sumluvv/Miao-Screenshot"
 
@@ -23,8 +23,8 @@ SolidCompression=yes
 WizardStyle=modern
 SetupIconFile=..\assets\icon.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
-ArchitecturesAllowed=x64compatible
-ArchitecturesInstallIn64BitMode=x64compatible
+ArchitecturesAllowed=x64
+ArchitecturesInstallIn64BitMode=x64
 
 [Languages]
 Name: "chinesesimp"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"

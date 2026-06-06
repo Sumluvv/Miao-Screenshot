@@ -26,7 +26,9 @@ if (Test-Path $Out) {
 $Iscc = Get-Command ISCC.exe -ErrorAction SilentlyContinue
 if ($Iscc) {
     Write-Host "==> 生成 Windows 安装器"
-    & $Iscc.Source (Join-Path $Root "packaging\windows-installer.iss")
+    Push-Location (Join-Path $Root "packaging")
+    & $Iscc.Source "windows-installer.iss"
+    Pop-Location
     $Installer = Join-Path $Root "dist\SplitScreenSnap-Setup.exe"
     if (Test-Path $Installer) {
         Write-Host "安装器完成: $Installer"

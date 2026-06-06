@@ -6,7 +6,7 @@ from pathlib import Path
 
 APP_NAME = "分屏截屏助手"
 APP_NAME_EN = "Split Screen Snap"
-VERSION = "3.0.5"
+VERSION = "3.0.6"
 REPO_URL = "https://github.com/Sumluvv/Miao-Screenshot"
 AUTHOR = "Sumluvv"
 
