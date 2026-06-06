@@ -2,7 +2,7 @@
 
 双屏 / 多屏用户的一键截图小工具：截取整屏、窗口或区域，自动复制到剪贴板，并可粘贴到当前输入框后自动发送。适合频繁向 AI、Office、浏览器或聊天工具发送截图的场景。
 
-![version](https://img.shields.io/badge/version-3.0.9-blue)
+![version](https://img.shields.io/badge/version-3.0.10-blue)
 ![Windows](https://img.shields.io/badge/Windows-安装版%20%2F%20免安装-green)
 ![macOS](https://img.shields.io/badge/macOS-整屏%20%2F%20区域-orange)
 
@@ -17,6 +17,18 @@
 | macOS | `SplitScreenSnap-mac.zip` | 解压后打开 `分屏截屏助手.app` |
 
 Windows 首次运行若出现 SmartScreen 提示，请选择“更多信息”→“仍要运行”。macOS 首次运行若被系统拦截，请到“系统设置 → 隐私与安全性”允许打开。
+
+## 验证下载文件
+
+本项目暂未使用付费代码签名证书。浏览器可能会提示“无法验证文件是否安全”，这是未签名小众 exe 的常见提示。
+
+每个 Release 会附带 `SHA256SUMS.txt`。Windows 用户可在下载目录运行：
+
+```powershell
+Get-FileHash .\SplitScreenSnap.exe -Algorithm SHA256
+```
+
+把输出的哈希值与 Release 附件中的 `SHA256SUMS.txt` 对比；一致说明文件没有被篡改。
 
 ## 主要功能
 
@@ -80,13 +92,16 @@ chmod +x scripts/build_macos.sh
 仓库已包含 `.github/workflows/release.yml`。推送 `v*` 标签会自动构建并创建 Release：
 
 ```powershell
-git tag v3.0.9
-git push origin v3.0.9
+git tag v3.0.10
+git push origin v3.0.10
 ```
 
 Release 附件会包含 Windows 安装版、Windows 免安装版和 macOS zip。发布前可参考 [docs/发布清单.md](docs/发布清单.md)。
 
 ## 常见问题
+
+**浏览器提示无法验证文件是否安全怎么办？**  
+请确认文件来自本仓库的 GitHub Releases，并按上面的 SHA256 步骤校验。免费方案无法彻底消除 SmartScreen 提示，只有付费代码签名证书能稳定解决。
 
 **窗口截图黑屏怎么办？**  
 请确认目标窗口没有最小化。部分硬件加速或受保护窗口可能无法被系统 API 完整截取，可改用整屏或区域截图。

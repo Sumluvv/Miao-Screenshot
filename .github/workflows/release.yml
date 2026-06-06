@@ -122,6 +122,13 @@ jobs:
         with:
           path: artifacts
 
+      - name: Generate checksums
+        run: |
+          find artifacts -type f \( -name "*.exe" -o -name "*.zip" \) -print0 |
+            sort -z |
+            xargs -0 sha256sum > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -130,5 +137,6 @@ jobs:
             artifacts/windows-exe/SplitScreenSnap.exe
             artifacts/windows-exe/SplitScreenSnap-Setup.exe
             artifacts/macos-app/SplitScreenSnap-mac.zip
+            SHA256SUMS.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
